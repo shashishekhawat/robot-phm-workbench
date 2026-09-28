@@ -1,0 +1,9 @@
+{
+  "name": "PHM Workbench",
+  "short_name": "Workbench",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#1F2430",
+  "theme_color": "#1F2430",
+  "description": "Work log and experiment record for the GP12 diagnostics and prognostics thesis."
+}

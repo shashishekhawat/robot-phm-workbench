@@ -1,0 +1,271 @@
+<title>PHM Workbench</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1F2430">
+<div class="wrap">
+  <div class="strip">
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tab-today" role="tab" aria-selected="true" aria-controls="view-today">Today</button>
+      <button class="tab" id="tab-log" role="tab" aria-selected="false" aria-controls="view-log">Log</button>
+      <button class="tab" id="tab-q" role="tab" aria-selected="false" aria-controls="view-q">Questions</button>
+      <button class="tab" id="tab-field" role="tab" aria-selected="false" aria-controls="view-field">Field</button>
+      <button class="tab" id="tab-set" role="tab" aria-selected="false" aria-controls="view-setup" hidden>Setup</button>
+    </div>
+    <span>Logged <b id="s-last">—</b></span>
+    <span>This week <b id="s-week">—</b></span>
+    <span>Feed <b id="s-feed">—</b></span>
+    <span>Repo <b id="s-repo">—</b></span>
+  </div>
+
+  <header class="mast">
+    <h1>PHM Workbench</h1>
+    <p class="sub">Work log and experiment record for the GP12 diagnostics and prognostics thesis, measured against the four DC-1 objectives.</p>
+  </header>
+
+  <!-- ================= TODAY ================= -->
+  <section id="view-today" role="tabpanel" aria-labelledby="tab-today">
+    <div class="panel-head">
+      <h2>Days since each objective was touched</h2>
+      <span class="tally" id="ages-tally">loading</span>
+    </div>
+    <div class="ages" id="ages">
+      <div class="msg">Loading objectives…</div>
+    </div>
+    <div class="verdict-line" id="neglect" hidden></div>
+
+    <div class="panel-head">
+      <h2>Critical questions closed</h2>
+      <span class="tally" id="q-tally">—</span>
+    </div>
+    <div id="q-progress">
+      <div class="msg">Loading questions…</div>
+    </div>
+
+    <div class="panel-head">
+      <h2>This week</h2>
+      <span class="tally" id="week-range">—</span>
+    </div>
+    <div class="counts" id="counts">
+      <div class="msg">Loading…</div>
+    </div>
+
+    <div class="panel-head">
+      <h2>Recent entries</h2>
+      <span class="tally" id="recent-tally">—</span>
+    </div>
+    <div id="recent">
+      <div class="msg">Loading log…</div>
+    </div>
+
+    <div class="note">
+      <h3>How to read this</h3>
+      <p>The top row is the measure worth watching. A thesis stalls by one objective going quiet for months while the others feel busy, so the count is days since anything — a log entry or an experiment — was recorded against each one. The bar turns amber past a week and red past three.</p>
+      <p>Refutations count as output. An experiment that disproves its hypothesis is recorded, tallied and kept exactly like one that confirms it.</p>
+    </div>
+  </section>
+
+  <!-- ================= LOG ================= -->
+  <section id="view-log" role="tabpanel" aria-labelledby="tab-log" hidden>
+    <div class="panel-head">
+      <h2>Today's entry</h2>
+      <span class="tally">aim for 60 seconds</span>
+    </div>
+
+    <form id="f-work">
+      <div class="two">
+        <div class="field">
+          <label for="w-date">Date</label>
+          <input type="date" id="w-date" required>
+        </div>
+        <div class="field">
+          <span class="legend">Objective</span>
+          <div class="chips" id="w-obj" role="group" aria-label="Objective"></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="w-what">What you did <span class="hint">the one field that matters</span></label>
+        <textarea id="w-what" required placeholder="Read Madsen on RLS stiffness identification; started the 2-DOF arm model in Simscape."></textarea>
+      </div>
+
+      <div class="two">
+        <div class="field">
+          <label for="w-hours">Hours</label>
+          <input type="number" id="w-hours" step="0.5" min="0" max="24" placeholder="3.5">
+        </div>
+        <div class="field">
+          <label for="w-block">What blocked you <span class="hint">optional, and the field you will be gladdest to have</span></label>
+          <input type="text" id="w-block" placeholder="YRC1000 manual does not say whether current is measured or commanded.">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="w-next">Next</label>
+        <input type="text" id="w-next" placeholder="Capture a live torque trace and check the sample rate.">
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn" id="w-save">Save entry</button>
+        <span class="kbd">Ctrl + Enter</span>
+        <span class="said" id="w-said"></span>
+      </div>
+    </form>
+
+    <details class="exp" id="exp-block">
+      <summary>Record an experiment<span class="sum-note">a claim with a verdict, not a line about a day</span></summary>
+
+      <form id="f-exp">
+        <div class="two">
+          <div class="field">
+            <label for="e-date">Date</label>
+            <input type="date" id="e-date" required>
+          </div>
+          <div class="field">
+            <span class="legend">Objective</span>
+            <div class="chips" id="e-obj" role="group" aria-label="Objective"></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="e-hyp">Hypothesis</label>
+          <textarea id="e-hyp" required placeholder="Joint stiffness is identifiable from motor-side signals alone under a trapezoidal load reversal."></textarea>
+        </div>
+
+        <div class="field">
+          <label for="e-setup">Setup</label>
+          <textarea id="e-setup" placeholder="2-DOF Simscape model, 1 kHz, Coulomb + viscous friction, 5% current noise."></textarea>
+        </div>
+
+        <div class="field">
+          <label for="e-result">Result</label>
+          <textarea id="e-result" placeholder="Stiffness recovered to within 4% with friction known; error rose to 31% when friction was co-estimated."></textarea>
+        </div>
+
+        <div class="two">
+          <div class="field">
+            <span class="legend">Verdict</span>
+            <div class="chips" id="e-verdict" role="group" aria-label="Verdict"></div>
+          </div>
+          <div class="field">
+            <label for="e-path">Where the data lives</label>
+            <input type="text" id="e-path" placeholder="~/phm/runs/2026-09-28-stiffness-id/">
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn" id="e-save">Save experiment</button>
+          <span class="kbd">Ctrl + Enter</span>
+          <span class="said" id="e-said"></span>
+        </div>
+      </form>
+    </details>
+
+    <div class="note">
+      <h3>What does not belong here</h3>
+      <p>Raw traces, plots and simulation output stay on disk and in git. Record the path and the conclusion; a dashboard that holds measurement files becomes a bad file manager.</p>
+    </div>
+  </section>
+
+  <!-- ================= QUESTIONS ================= -->
+  <section id="view-q" role="tabpanel" aria-labelledby="tab-q" hidden>
+    <div class="panel-head">
+      <h2>The 61 critical questions</h2>
+      <span class="tally" id="q-tally-2">—</span>
+    </div>
+
+    <div class="filters">
+      <div class="chips" id="q-status" role="group" aria-label="Status filter"></div>
+      <select id="q-cluster" aria-label="Cluster filter"></select>
+    </div>
+
+    <div id="q-list">
+      <div class="msg">Loading questions…</div>
+    </div>
+
+    <div class="note">
+      <h3>Why these are the progress bar</h3>
+      <p>The list was fixed before the work started, which makes the denominator honest in a way self-set milestones never are. Closing one means writing the answer down, so the metric and the thesis material are the same act.</p>
+      <p>Dropping a question is a legitimate outcome. A question that turns out to rest on a false premise should be dropped with a reason, not quietly left open.</p>
+    </div>
+  </section>
+
+  <!-- ================= FIELD ================= -->
+  <section id="view-field" role="tabpanel" aria-labelledby="tab-field" hidden>
+    <div class="cols">
+      <div>
+        <div class="panel-head">
+          <h2>Submission windows</h2>
+          <span class="tally" id="dl-tally">—</span>
+        </div>
+        <div id="deadlines"><div class="msg">Loading…</div></div>
+      </div>
+
+      <div>
+        <div class="panel-head">
+          <h2>New literature</h2>
+          <span class="tally" id="pp-tally">—</span>
+        </div>
+        <div class="filters">
+          <div class="chips" id="pp-filter" role="group" aria-label="Triage filter"></div>
+        </div>
+        <div id="papers"><div class="msg">Loading…</div></div>
+      </div>
+    </div>
+
+    <div class="note">
+      <h3>What this is reading</h3>
+      <p>Every row is fetched data, never a placeholder. Deadlines come from each venue's own call-for-papers page; literature is arXiv preprints plus journal articles from MSSP, RCIM, the Journal of Manufacturing Systems, Mechatronics and Measurement. A scheduled task refreshes both each morning at 07:00 IST.</p>
+      <p>Three things are inference rather than source data: topic tags are derived from each title, preprint months from the arXiv ID, and journal years from the ScienceDirect PII, which encodes a year but no month — those rows show a year only.</p>
+      <p>Triage is what stops this becoming thirty undifferentiated rows. Mark a paper read or irrelevant, and mark a deadline as one you intend to submit to; only then does the feed tell you anything about your own work.</p>
+    </div>
+  </section>
+
+  <!-- ================= SETUP ================= -->
+  <section id="view-setup" role="tabpanel" aria-labelledby="tab-set" hidden>
+    <div class="panel-head">
+      <h2>Connect the data repository</h2>
+      <span class="tally" id="gh-status">—</span>
+    </div>
+
+    <p class="lede">Your objectives, questions, work log and experiments live as JSON files in a
+    private GitHub repository. This page reads and writes them directly, so every entry you make
+    becomes a commit. Nothing is stored on any server but your own repository.</p>
+
+    <ol class="steps">
+      <li>Create a <b>private</b> repository named <code>robot-phm-workbench-data</code> and push the
+          starter files into it.</li>
+      <li>Open <a href="https://github.com/settings/personal-access-tokens" target="_blank"
+          rel="noopener noreferrer">Settings → Developer settings → Fine-grained tokens</a>
+          and generate a new token.</li>
+      <li>Under <b>Repository access</b> choose <b>Only select repositories</b> and pick just that
+          data repository.</li>
+      <li>Under <b>Permissions → Repository permissions</b> set <b>Contents</b> to
+          <b>Read and write</b>. Nothing else is needed.</li>
+      <li>Set an expiry you are comfortable with, generate it, and paste it below.</li>
+    </ol>
+
+    <form id="f-token">
+      <div class="field">
+        <label for="gh-token">Fine-grained access token</label>
+        <input type="password" id="gh-token" autocomplete="off" spellcheck="false"
+               placeholder="github_pat_…">
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn" id="gh-save">Connect</button>
+        <button type="button" class="btn ghost" id="gh-forget">Forget token</button>
+      </div>
+    </form>
+
+    <div class="note">
+      <h3>Where the token is kept, and what it can do</h3>
+      <p>It is stored only in this browser, on this machine, and is sent only to api.github.com.
+      It is never committed and never leaves for anywhere else. You will paste it once per browser.</p>
+      <p>Scoped as above it can read and write files in that one private repository and nothing
+      else — it cannot touch your other repositories or your account. If it ever leaks, revoke it
+      on the same settings page and generate another; the worst case is someone editing this log.</p>
+    </div>
+  </section>
+
+</div>
+<script src="config.js"></script>
+<script src="app.js"></script>
