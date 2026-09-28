@@ -1,4 +1,6 @@
 <title>PHM Workbench</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <link rel="stylesheet" href="styles.css">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#1F2430">
@@ -292,11 +294,46 @@
 
     <div class="filters">
       <div class="chips" id="th-which" role="group" aria-label="Which board"></div>
+      <div class="chips" id="th-layout" role="group" aria-label="Layout" hidden></div>
       <div class="chips" id="th-mode" role="group" aria-label="Mode" hidden></div>
-      <button type="button" class="btn ghost" id="th-note" hidden>Add note</button>
-      <button type="button" class="btn" id="th-save" hidden>Save layout</button>
+      <select id="th-rel" aria-label="Relation to draw" hidden></select>
+      <button type="button" class="btn ghost" id="th-add" hidden>Add node</button>
+      <button type="button" class="btn ghost" id="th-auto" hidden>Suggest links</button>
+      <button type="button" class="btn" id="th-save" hidden>Save board</button>
       <span class="said" id="th-said"></span>
     </div>
+
+    <form id="f-node" hidden>
+      <div class="two">
+        <div class="field"><label for="n-type">Kind</label>
+          <select id="n-type">
+            <option value="claim">claim — something a paper asserts</option>
+            <option value="concept">concept — a building block</option>
+            <option value="note">note — a pin of your own</option>
+          </select></div>
+        <div class="field"><label for="n-text">Text</label>
+          <input type="text" id="n-text" required
+                 placeholder="Stiffness is identifiable from motor-side signals alone"></div>
+      </div>
+      <div class="two">
+        <div class="field"><label for="n-status">Evidence</label>
+          <select id="n-status">
+            <option value="assumed">assumed — asserted, not shown</option>
+            <option value="simulated">simulated only</option>
+            <option value="bench">bench / lab hardware</option>
+            <option value="validated">validated on a real system</option>
+            <option value="contradicted">contradicted by other work</option>
+          </select></div>
+        <div class="field"><label for="n-date">Year or month <span class="hint">for the chronology view</span></label>
+          <input type="text" id="n-date" placeholder="2024 or 2024-06"></div>
+      </div>
+      <div class="field"><label for="n-latex">Equation <span class="hint">LaTeX, no dollar signs — optional</span></label>
+        <input type="text" id="n-latex" placeholder="\dot r = K_I(\tau_f - r)"></div>
+      <div class="actions">
+        <button type="submit" class="btn" id="n-save">Add to board</button>
+        <button type="button" class="btn ghost" id="n-cancel">Cancel</button>
+      </div>
+    </form>
 
     <div class="board-wrap">
       <div class="board" id="board">
@@ -321,8 +358,13 @@
       <p>There is no citation graph in the data and I will not invent one, so the threads here are
       the ones you pull. Switch to <b>connect</b>, click one card then another, and the link records
       what you think the relationship is. Add notes as pins for conclusions that are not papers.</p>
-      <p>Dragging is local until you press <b>Save layout</b> — otherwise every nudge would be its
-      own commit in your repository.</p>
+      <p><b>Free</b> keeps where you drag things. <b>Chronology</b> lays them out by publication
+      date, which exposes what was reinvented rather than built on. <b>Logic</b> stacks them by
+      dependency, so what everything rests on sits at the bottom. Only free mode saves positions.</p>
+      <p><b>Suggest links</b> proposes edges from shared tags and dates. They arrive dashed and
+      provisional — keep the ones you agree with, click the rest away. The point is that you decide.</p>
+      <p>Claims carry an evidence mark: assumed, simulated, bench, validated, contradicted. Adding a
+      claim forces the question the abstract avoids — what was actually demonstrated?</p>
     </div>
   </section>
 

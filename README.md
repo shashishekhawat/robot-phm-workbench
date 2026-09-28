@@ -26,9 +26,17 @@ marked *waiting*. Click the status to move it along: backlog, next, doing, done.
 
 **Threads** — two boards. *Question routes* is derived, not drawn: a question joins an objective
 when a task in your plan says it closes that question and serves that objective, so **no route**
-marks questions no planned work touches. *Paper board* is yours to draw — switch to connect, click
-two cards, and the thread records what you think the relationship is. Dragging is local until you
-press Save layout, so a nudge is not a commit.
+marks questions no planned work touches. *Paper board* is yours to draw, and holds more than
+papers: **claim** and **concept** nodes, each able to carry a LaTeX equation. A claim records what
+evidence actually backs it — assumed, simulated, bench, validated, contradicted — which is the
+field the abstract never gives you.
+
+Threads are typed and coloured: builds on, contradicts, supports, same method, assumes, superseded
+by. *Suggest links* proposes edges from shared tags and dates; they arrive dashed and provisional,
+and you click a thread to reject it. Three layouts: **free** (drag, positions saved),
+**chronology** (ordinal axis over years that actually carry work, with gap markers) and **logic**
+(stacked by dependency, so what everything rests on sits at the bottom). Only free mode saves
+positions; dragging stays local until you press Save board.
 
 **Field** — submission windows with an intent mark, and a literature feed with triage marks,
 refreshed daily by a GitHub Action in the data repository.

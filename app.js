@@ -15,6 +15,7 @@ window.WB_BUILD = '2026-09-28';
   var board = [];
   var thWhich = "questions";
   var thMode = "move";
+  var thLayout = "free";
   var thSel = null;
   var thDirty = false;
   var ready = {obj:false, work:false, exp:false, q:false, pp:false, dl:false, tk:false};
@@ -789,6 +790,13 @@ window.WB_BUILD = '2026-09-28';
     var b = ev.target.closest(".chip"); if (!b) return;
     thWhich = b.getAttribute("data-v"); thSel = null; renderBoard();
   });
+  chipGroup(el("th-layout"), [{value:"free",label:"free"},{value:"chrono",label:"chronology"},
+                              {value:"logic",label:"logic"}], "free");
+  wireChips(el("th-layout"));
+  el("th-layout").addEventListener("click", function(ev){
+    var b = ev.target.closest(".chip"); if (!b) return;
+    thLayout = b.getAttribute("data-v"); thSel = null; renderPaperBoard();
+  });
   chipGroup(el("th-mode"), [{value:"move",label:"move"},{value:"connect",label:"connect"}], "move");
   wireChips(el("th-mode"));
   el("th-mode").addEventListener("click", function(ev){
@@ -796,9 +804,16 @@ window.WB_BUILD = '2026-09-28';
     thMode = b.getAttribute("data-v"); thSel = null; paintThreads();
   });
 
+  function fillRelSelect(){
+    var s = el("th-rel");
+    if (s.options.length) return;
+    s.innerHTML = RELS.map(function(r){
+      return '<option value="' + esc(r.v) + '">' + esc(r.v) + '</option>'; }).join("");
+  }
+
   function boardDoc(){
     for (var i=0;i<board.length;i++) if (board[i].id === "papers") return board[i];
-    return {id:"papers", positions:{}, edges:[], notes:[]};
+    return {id:"papers", positions:{}, edges:[], nodes:[], notes:[]};
   }
 
   var nodeBoxes = [];   // {id, x, y, w, h}
@@ -823,8 +838,11 @@ window.WB_BUILD = '2026-09-28';
     edgeList.forEach(function(e, i){
       var a = boxOf(e.from), b = boxOf(e.to);
       if (!a || !b) return;
-      out += '<path d="' + curve(a,b) + '" data-e="' + i + '"' +
-             (first ? ' class="drawin"' : '') + '></path>';
+      var cl = [relClass(e.kind)];
+      if (e.auto) cl.push("auto");
+      if (first) cl.push("drawin");
+      out += '<path d="' + curve(a,b) + '" data-e="' + i + '" class="' +
+             cl.join(" ").trim() + '"></path>';
     });
     svg.innerHTML = out;
     if (first) requestAnimationFrame(function(){
@@ -946,7 +964,7 @@ window.WB_BUILD = '2026-09-28';
 
     el("th-head").textContent = "Question routes";
     el("th-tally").textContent = routed + " routed · " + noRoute + " with no route";
-    el("th-mode").hidden = true; el("th-note").hidden = true; el("th-save").hidden = true;
+    ["th-mode","th-layout","th-rel","th-add","th-auto","th-save"].forEach(function(i){ el(i).hidden = true; });
     el("th-note-q").hidden = false; el("th-note-p").hidden = true;
     el("nodes").innerHTML = html;
     var maxY = nodeBoxes.reduce(function(m,b){ return Math.max(m, b.y + b.h); }, 0);
@@ -955,45 +973,222 @@ window.WB_BUILD = '2026-09-28';
     measureNodes(); paintThreads(true);
   }
 
-  function renderPaperBoard(){
-    var doc = boardDoc(), pos = doc.positions || {}, notes = doc.notes || [];
-    var picked = papers.filter(function(p){
-      return pos[p.id] || ["reading","read","cited"].indexOf(p.triage) >= 0;
-    });
-    if (!picked.length) picked = papers.slice(0, 10);
+  /* ---------------- paper board ---------------- */
+  var RELS = [
+    {v:"builds on",   k:"",             c:"#FFCC66"},
+    {v:"contradicts", k:"k-contradicts",c:"#F28779"},
+    {v:"supports",    k:"k-supports",   c:"#BAE67E"},
+    {v:"same method", k:"k-same",       c:"#73D0FF"},
+    {v:"assumes",     k:"k-assumes",    c:"#D4BFFF"},
+    {v:"superseded by",k:"k-superseded",c:"#88888A"}
+  ];
+  var EVID = ["assumed","simulated","bench","validated","contradicted"];
+  function relClass(kind){
+    for (var i=0;i<RELS.length;i++) if (RELS[i].v === kind) return RELS[i].k;
+    return "";
+  }
+  function tex(s){
+    if (!s) return "";
+    if (!window.katex) return '<div class="eq"><code>' + esc(s) + '</code></div>';
+    try { return '<div class="eq">' + window.katex.renderToString(s, {throwOnError:false}) + '</div>'; }
+    catch(e){ return '<div class="eq">' + esc(s) + '</div>'; }
+  }
+  function yearOf(v){
+    var m = String(v || "").match(/(\d{4})(?:-(\d{2}))?/);
+    if (!m) return null;
+    return +m[1] + (m[2] ? (+m[2] - 1) / 12 : 0.5);
+  }
 
-    nodeBoxes = []; edgeList = (doc.edges || []).slice();
-    var html = "", i = 0;
-    picked.forEach(function(p){
-      var d = pos[p.id] || {x: 30 + (i % 5) * 215, y: 30 + Math.floor(i / 5) * 130};
-      i++;
-      nodeBoxes.push({id:p.id, x:d.x, y:d.y, w:190, h:78});
-      html += '<div class="nd pc" data-id="' + esc(p.id) + '" data-kind="p" style="left:' + d.x +
-              'px;top:' + d.y + 'px"><h4>' + esc(String(p.title).slice(0,78)) +
-              (String(p.title).length > 78 ? "…" : "") + '</h4>' +
-              '<div class="mt">' + esc(p.arxivId || p.source || "") + ' · ' + esc(p.triage || "unread") + '</div></div>';
+  /* every node on the board: papers from the feed plus your own */
+  function boardNodes(){
+    var doc = boardDoc(), pos = doc.positions || {}, out = [];
+    papers.forEach(function(p){
+      if (!pos[p.id] && ["reading","read","cited"].indexOf(p.triage) < 0) return;
+      out.push({id:p.id, type:"paper", text:p.title, date:p.posted,
+                meta:(p.arxivId || p.source || "") + " · " + (p.triage || "unread"),
+                tags:p.tags || [], w:190});
     });
-    notes.forEach(function(n){
-      nodeBoxes.push({id:n.id, x:n.x, y:n.y, w:160, h:60});
-      html += '<div class="nd pin" data-id="' + esc(n.id) + '" data-kind="n" style="left:' + n.x +
-              'px;top:' + n.y + 'px">' + esc(n.text) + '</div>';
+    if (!out.length) papers.slice(0,8).forEach(function(p){
+      out.push({id:p.id, type:"paper", text:p.title, date:p.posted,
+                meta:(p.arxivId || p.source || ""), tags:p.tags || [], w:190});
+    });
+    (doc.nodes || []).forEach(function(n){
+      out.push({id:n.id, type:n.type || "note", text:n.text, date:n.date,
+                status:n.status, latex:n.latex, tags:[], w:n.type === "concept" ? 150 : 186});
+    });
+    return out;
+  }
+
+  function layoutFree(ns){
+    var pos = boardDoc().positions || {}, i = 0;
+    ns.forEach(function(n){
+      var d = pos[n.id];
+      if (!d){ d = {x: 30 + (i % 6) * 215, y: 30 + Math.floor(i / 6) * 150}; i++; }
+      n.x = d.x; n.y = d.y;
+    });
+    return {deco:""};
+  }
+
+  /* place nodes left to right by x, pushing down only when they would overlap */
+  function packRows(list, top, rowH){
+    var rows = [];
+    list.forEach(function(n){
+      for (var r = 0; ; r++){
+        var row = rows[r] || (rows[r] = []);
+        var clash = row.some(function(m){ return n.x < m.x + m.w + 12 && m.x < n.x + n.w + 12; });
+        if (!clash){ row.push(n); n.y = top + r * rowH; return; }
+      }
+    });
+    return rows.length * rowH;
+  }
+
+  function layoutChrono(ns){
+    /* ordinal axis: only years that actually carry a node, so a lone 2003
+       reference does not stretch the scale across two empty decades */
+    var years = [];
+    ns.forEach(function(n){
+      var y = yearOf(n.date); if (y == null) return;
+      var Y = Math.floor(y); if (years.indexOf(Y) < 0) years.push(Y);
+    });
+    years.sort(function(p,q){ return p - q; });
+    var slot = {}; years.forEach(function(Y,i){ slot[Y] = i; });
+
+    var PX = 268, LEFT = 96, deco = "", top = 34;
+    ["paper","claim","concept","note"].forEach(function(L){
+      var list = ns.filter(function(n){ return (n.type || "note") === L; });
+      if (!list.length) return;
+      list.forEach(function(n){
+        var y = yearOf(n.date);
+        n.x = y == null ? 8 : Math.round(LEFT + slot[Math.floor(y)] * PX +
+              (y - Math.floor(y)) * (PX * 0.45));
+      });
+      list.sort(function(p,q){ return p.x - q.x; });
+      deco += '<div class="lanelab" style="left:6px;top:' + top + 'px">' + L + '</div>';
+      top += packRows(list, top, L === "paper" ? 96 : 84) + 26;
+    });
+
+    years.forEach(function(Y, i){
+      var x = LEFT + i * PX;
+      var jump = i > 0 && Y - years[i-1] > 1;
+      deco += '<div class="axis" style="left:' + x + 'px;top:0;width:1px;height:' + (top + 20) +
+              'px;border-top:0;border-left:1px dashed var(--line-soft)"><span>' + Y +
+              (jump ? ' <em style="color:var(--s-stale);font-style:normal">⋯' +
+                      (Y - years[i-1] - 1) + 'y gap</em>' : '') + '</span></div>';
+    });
+    return {deco:deco, width:LEFT + Math.max(years.length,1) * PX + 240};
+  }
+
+  function layoutLogic(ns, edges){
+    /* depth = how much a node rests on; sources sit at the bottom */
+    var dep = {}, idx = {};
+    ns.forEach(function(n){ idx[n.id] = n; dep[n.id] = 0; });
+    var UP = {"builds on":1, "assumes":1, "supports":1};
+    for (var pass = 0; pass < 6; pass++){
+      edges.forEach(function(e){
+        if (!UP[e.kind || "builds on"]) return;
+        if (idx[e.from] && idx[e.to]) dep[e.from] = Math.max(dep[e.from], (dep[e.to] || 0) + 1);
+      });
+    }
+    var byLevel = {}, maxL = 0;
+    ns.forEach(function(n){
+      var L = dep[n.id] || 0; maxL = Math.max(maxL, L);
+      (byLevel[L] || (byLevel[L] = [])).push(n);
+    });
+    var deco = "", W = 600, top = 34;
+    for (var L = maxL; L >= 0; L--){
+      var row = byLevel[L]; if (!row) continue;
+      row.forEach(function(n, i){ n.x = 100 + i * (n.w + 26); });
+      deco += '<div class="lanelab" style="left:6px;top:' + top + 'px">' +
+              (L === 0 ? "rests on nothing" : "level " + L) + '</div>';
+      var h = packRows(row, top, 100);
+      W = Math.max(W, row.reduce(function(m,n){ return Math.max(m, n.x + n.w); }, 0) + 60);
+      top += h + 30;
+    }
+    return {deco:deco, width:W};
+  }
+
+  function suggestEdges(ns, existing){
+    var have = {};
+    existing.forEach(function(e){ have[e.from + ">" + e.to] = 1; have[e.to + ">" + e.from] = 1; });
+    var papersOnly = ns.filter(function(n){ return n.type === "paper"; });
+    var out = [];
+    for (var i = 0; i < papersOnly.length; i++){
+      for (var j = i + 1; j < papersOnly.length; j++){
+        var A = papersOnly[i], B = papersOnly[j];
+        var shared = (A.tags || []).filter(function(t){ return (B.tags || []).indexOf(t) >= 0; });
+        if (shared.length < 2) continue;
+        if (have[A.id + ">" + B.id]) continue;
+        var ya = yearOf(A.date), yb = yearOf(B.date);
+        var older = (ya != null && yb != null && ya > yb) ? B : A;
+        var newer = older === A ? B : A;
+        out.push({from:newer.id, to:older.id,
+                  kind: (ya != null && yb != null) ? "builds on" : "same method",
+                  auto:true, note:"shared: " + shared.join(", ")});
+        have[A.id + ">" + B.id] = 1;
+      }
+    }
+    return out;
+  }
+
+  function renderPaperBoard(){
+    var doc = boardDoc();
+    var ns = boardNodes();
+    edgeList = (doc.edges || []).slice();
+    var lay = thLayout === "chrono" ? layoutChrono(ns)
+            : thLayout === "logic"  ? layoutLogic(ns, edgeList)
+            : layoutFree(ns);
+
+    nodeBoxes = ns.map(function(n){ return {id:n.id, x:n.x, y:n.y, w:n.w, h:80}; });
+
+    var html = lay.deco || "";
+    ns.forEach(function(n){
+      var cls = n.type === "paper" ? "nd pc"
+              : n.type === "claim" ? "nd cl ev-" + (n.status || "assumed")
+              : n.type === "concept" ? "nd cn" : "nd pin";
+      var body;
+      if (n.type === "paper"){
+        body = '<h4>' + esc(String(n.text).slice(0,78)) + (String(n.text).length > 78 ? "…" : "") +
+               '</h4><div class="mt">' + esc(n.meta || "") + (n.date ? " · " + esc(n.date) : "") + '</div>';
+      } else {
+        body = '<div class="txt">' + esc(n.text) + '</div>' + tex(n.latex) +
+               (n.type === "claim" ? '<span class="ev">' + esc(n.status || "assumed") +
+                 (n.date ? " · " + esc(n.date) : "") + '</span>' : "");
+      }
+      html += '<div class="' + cls + '" data-id="' + esc(n.id) + '" data-kind="' + esc(n.type) +
+              '" style="left:' + n.x + 'px;top:' + n.y + 'px">' + body + '</div>';
     });
 
     el("th-head").textContent = "Paper board";
-    el("th-tally").textContent = picked.length + " cards · " + edgeList.length + " threads" +
-                                 (thDirty ? " · unsaved" : "");
-    el("th-mode").hidden = false; el("th-note").hidden = false; el("th-save").hidden = false;
+    el("th-tally").textContent = ns.length + " nodes · " + edgeList.length + " threads" +
+      (edgeList.filter(function(e){ return e.auto; }).length ? " (" +
+        edgeList.filter(function(e){ return e.auto; }).length + " suggested)" : "") +
+      (thDirty ? " · unsaved" : "");
+    ["th-mode","th-layout","th-rel","th-add","th-auto","th-save"].forEach(function(i){ el(i).hidden = false; });
+    el("th-mode").hidden = thLayout !== "free";
     el("th-note-q").hidden = true; el("th-note-p").hidden = false;
     el("nodes").innerHTML = html;
-    var maxX = nodeBoxes.reduce(function(m,b){ return Math.max(m, b.x + b.w); }, 600);
+
+    var maxX = Math.max(lay.width || 0, nodeBoxes.reduce(function(m,b){ return Math.max(m, b.x + b.w); }, 600));
     var maxY = nodeBoxes.reduce(function(m,b){ return Math.max(m, b.y + b.h); }, 400);
     el("board").style.width = (maxX + 60) + "px";
-    el("board").style.height = (maxY + 60) + "px";
+    el("board").style.height = (maxY + 80) + "px";
     measureNodes(); paintThreads(true);
+    renderRelLegend();
   }
 
+  function renderRelLegend(){
+    var n = el("th-legend");
+    if (!n){
+      n = document.createElement("div"); n.id = "th-legend"; n.className = "legend-rel";
+      el("view-threads").insertBefore(n, el("th-detail"));
+    }
+    n.innerHTML = RELS.map(function(r){
+      return '<span><i style="background:' + r.c + '"></i>' + esc(r.v) + '</span>'; }).join("") +
+      '<span><i style="background:var(--muted)"></i>dashed = suggested, not yours</span>';
+  }
   function renderBoard(){
     if (!ready.q || !ready.obj) return;
+    fillRelSelect();
     if (thWhich === "papers") renderPaperBoard(); else renderQuestionRoutes();
   }
 
@@ -1019,18 +1214,55 @@ window.WB_BUILD = '2026-09-28';
     if (thMode !== "connect") return;
     if (!thSel){ thSel = id; n.classList.add("sel"); return; }
     if (thSel === id){ thSel = null; n.classList.remove("sel"); return; }
-    edgeList.push({from: thSel, to: id, kind: REL[0]});
-    (boardDoc().edges || (boardDoc().edges = [])).push({from: thSel, to: id, kind: REL[0]});
+    var kind = el("th-rel").value || "builds on";
+    (boardDoc().edges || (boardDoc().edges = [])).push({from: thSel, to: id, kind: kind});
     thSel = null; thDirty = true;
     el("nodes").querySelectorAll(".sel").forEach(function(x){ x.classList.remove("sel"); });
     renderPaperBoard();
+  });
+
+  el("threads").addEventListener("click", function(ev){
+    var p = ev.target.closest("path"); if (!p || thWhich !== "papers") return;
+    var e = edgeList[+p.getAttribute("data-e")]; if (!e) return;
+    var doc = boardDoc();
+    doc.edges = (doc.edges || []).filter(function(x){
+      return !(x.from === e.from && x.to === e.to && (x.kind || "") === (e.kind || ""));
+    });
+    thDirty = true; renderPaperBoard();
+  });
+  el("th-auto").addEventListener("click", function(){
+    var doc = boardDoc(), ns = boardNodes();
+    var add = suggestEdges(ns, doc.edges || []);
+    if (!add.length){ say(el("th-said"), "Nothing new to suggest."); return; }
+    doc.edges = (doc.edges || []).concat(add);
+    thDirty = true; renderPaperBoard();
+    say(el("th-said"), add.length + " suggested — click a thread to reject it.");
+  });
+
+  el("th-add").addEventListener("click", function(){
+    var f = el("f-node"); f.hidden = !f.hidden;
+    if (!f.hidden) el("n-text").focus();
+  });
+  el("n-cancel").addEventListener("click", function(){ el("f-node").hidden = true; });
+  el("f-node").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var text = el("n-text").value.trim(); if (!text) return;
+    var doc = boardDoc();
+    (doc.nodes || (doc.nodes = [])).push({
+      id: "n-" + Date.now().toString(36),
+      type: el("n-type").value, text: text,
+      status: el("n-status").value, date: el("n-date").value.trim(),
+      latex: el("n-latex").value.trim()
+    });
+    ["n-text","n-date","n-latex"].forEach(function(i){ el(i).value = ""; });
+    el("f-node").hidden = true; thDirty = true; renderPaperBoard();
   });
 
   /* drag, papers board only */
   (function(){
     var drag = null;
     el("nodes").addEventListener("pointerdown", function(ev){
-      if (thWhich !== "papers" || thMode !== "move") return;
+      if (thWhich !== "papers" || thMode !== "move" || thLayout !== "free") return;
       var n = ev.target.closest(".nd"); if (!n) return;
       var b = boxOf(n.getAttribute("data-id")); if (!b) return;
       var r = el("board").getBoundingClientRect();
@@ -1054,26 +1286,16 @@ window.WB_BUILD = '2026-09-28';
     });
   })();
 
-  el("th-note").addEventListener("click", function(){
-    var txt = (el("th-detail").hidden ? "" : "");
-    var doc = boardDoc();
-    (doc.notes || (doc.notes = [])).push({
-      id: "pin-" + Date.now().toString(36), x: 40, y: 40,
-      text: "New pin — click to edit, then Save layout"
-    });
-    thDirty = true; renderPaperBoard();
-  });
-
   el("nodes").addEventListener("dblclick", function(ev){
-    var n = ev.target.closest(".nd.pin"); if (!n) return;
+    var n = ev.target.closest(".nd.pin, .nd.cl, .nd.cn"); if (!n) return;
     var doc = boardDoc(), id = n.getAttribute("data-id");
-    (doc.notes || []).forEach(function(p){
-      if (p.id !== id) return;
-      var v = window.prompt ? null : null;   // prompt is blocked in the frame
-      var box = document.createElement("textarea");
-      box.value = p.text; box.style.width = "100%"; box.style.minHeight = "56px";
-      n.innerHTML = ""; n.appendChild(box); box.focus();
-      box.addEventListener("blur", function(){ p.text = box.value; thDirty = true; renderPaperBoard(); });
+    var row = (doc.nodes || []).filter(function(x){ return x.id === id; })[0];
+    if (!row) return;
+    var box = document.createElement("textarea");
+    box.value = row.text; box.style.width = "100%"; box.style.minHeight = "58px";
+    n.innerHTML = ""; n.appendChild(box); box.focus();
+    box.addEventListener("blur", function(){
+      row.text = box.value.trim() || row.text; thDirty = true; renderPaperBoard();
     });
   });
 
@@ -1082,7 +1304,8 @@ window.WB_BUILD = '2026-09-28';
     var doc = boardDoc(), btn = el("th-save");
     btn.disabled = true;
     dbRef.collection("board").doc("papers").update({
-      positions: doc.positions || {}, edges: doc.edges || [], notes: doc.notes || []
+      positions: doc.positions || {}, edges: doc.edges || [],
+      nodes: doc.nodes || [], notes: doc.notes || []
     }).then(function(){ thDirty = false; say(el("th-said"), "Layout saved."); })
      ["catch"](function(e){ say(el("th-said"), failText(e)); })
      ["finally"](function(){ btn.disabled = false; });
