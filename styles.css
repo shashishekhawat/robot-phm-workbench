@@ -21,6 +21,7 @@
   }
   /* Deliberately single-theme: Ayu Mirage, as requested. */
 
+  [hidden]{display:none !important}
   *{box-sizing:border-box}
   body{
     background:var(--bg);
