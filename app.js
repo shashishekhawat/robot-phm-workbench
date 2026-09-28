@@ -1030,11 +1030,26 @@ window.WB_BUILD = '2026-09-28';
   }
 
   function layoutFree(ns){
-    var pos = boardDoc().positions || {}, i = 0;
+    var pos = boardDoc().positions || {}, placed = [], i = 0;
+    /* dragged cards keep where you put them; the rest fill the grid. A grid
+       slot a dragged card is sitting on gets skipped, or the two would stack
+       and the one underneath would become unclickable. */
     ns.forEach(function(n){
-      var d = pos[n.id];
-      if (!d){ d = {x: 30 + (i % 6) * 215, y: 30 + Math.floor(i / 6) * 150}; i++; }
-      n.x = d.x; n.y = d.y;
+      var d = pos[n.id]; if (!d) return;
+      n.x = d.x; n.y = d.y; placed.push(n);
+    });
+    function free(x, y, w){
+      return !placed.some(function(m){
+        return x < m.x + m.w + 10 && m.x < x + w + 10 &&
+               y < m.y + 130 && m.y < y + 130;
+      });
+    }
+    ns.forEach(function(n){
+      if (pos[n.id]) return;
+      var x, y;
+      do { x = 30 + (i % 6) * 215; y = 30 + Math.floor(i / 6) * 150; i++; }
+      while (!free(x, y, n.w) && i < 4000);
+      n.x = x; n.y = y; placed.push(n);
     });
     return {deco:""};
   }
@@ -1185,6 +1200,7 @@ window.WB_BUILD = '2026-09-28';
     el("board").style.height = (maxY + 80) + "px";
     measureNodes(); paintThreads(true);
     renderRelLegend();
+    if (inspId) markOpen(inspId);
   }
 
   function renderRelLegend(){
@@ -1200,8 +1216,123 @@ window.WB_BUILD = '2026-09-28';
   function renderBoard(){
     if (!ready.q || !ready.obj) return;
     fillRelSelect();
-    if (thWhich === "papers") renderPaperBoard(); else renderQuestionRoutes();
+    if (thWhich === "papers") renderPaperBoard(); else { closeInspector(); renderQuestionRoutes(); }
   }
+
+  /* ---------------- paper inspector ----------------
+     A node is a card with eighty characters on it. This is where the rest of
+     it lives: what it claims, what you made of it, and the file itself. */
+  var inspId = null, inspWhere = null;
+
+  function rowIn(list, id){
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+  /* A stored Drive link if there is one, otherwise a Drive search that will
+     land on it. The fallback means every entry is one click from the file
+     before any direct links have been filled in. */
+  function driveHref(r){
+    if (r.drive) return r.drive;
+    var q = r.file ? String(r.file).split(/[\\\/]/).pop().replace(/\.[a-z0-9]+$/i, "")
+                   : String(r.title || "");
+    q = q.replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
+    return q ? "https://drive.google.com/drive/search?q=" + encodeURIComponent(q) : null;
+  }
+  function openInspector(id){
+    var r = rowIn(library, id), where = "library";
+    if (!r){ r = rowIn(papers, id); where = "papers"; }
+    if (!r) return closeInspector();
+    inspId = id; inspWhere = where;
+
+    el("insp-kind").textContent = (where === "papers" ? "feed · " : "") + (r.kind || "paper");
+    el("insp-title").textContent = r.title || "(untitled)";
+
+    var bits = [];
+    if (r.authors) bits.push(esc(r.authors));
+    if (r.venue && r.venue !== r.authors) bits.push(esc(r.venue));
+    if (r.posted)  bits.push(esc(r.posted));
+    if (r.n)       bits.push("DC-1 ref [" + esc(r.n) + "]");
+    if (r.triage)  bits.push(esc(r.triage));
+    el("insp-meta").innerHTML = bits.join(" · ");
+
+    var have = r.have !== false;
+    var links = [], d = have ? driveHref(r) : null;
+    if (d) links.push('<a class="btn ghost" target="_blank" rel="noopener" href="' + esc(d) +
+                      '">' + (r.drive ? "Open in Drive" : "Find in Drive") + '</a>');
+    if (r.doi) links.push('<a class="btn ghost" target="_blank" rel="noopener" ' +
+                          'href="https://doi.org/' + esc(r.doi) + '">DOI</a>');
+    if (r.url) links.push('<a class="btn ghost" target="_blank" rel="noopener" href="' +
+                          esc(r.url) + '">Source</a>');
+    if (!have) links.push('<span class="insp-path">not acquired yet</span>');
+    else if (r.file) links.push('<span class="insp-path" title="' + esc(r.file) + '">on disk</span>');
+    el("insp-links").innerHTML = links.join("");
+
+    /* Context you curated elsewhere — the tier and the why-it-matters line.
+       Read-only on purpose: the notes box below is yours, and nothing should
+       be writing into the same field you type in. */
+    var why = el("insp-why");
+    if (r.why || r.tier){
+      why.innerHTML = (r.tier ? "<b>" + esc(r.tier) + "</b> " : "") + esc(r.why || "");
+      why.hidden = false;
+    } else why.hidden = true;
+
+    /* A book downloaded chapter by chapter is one work with many files, not
+       twenty works. One node on the board; every chapter reachable from here. */
+    var chBox = el("insp-ch"), chs = Array.isArray(r.chapters) ? r.chapters : [];
+    if (chs.length){
+      chBox.innerHTML = '<div class="insp-lab">' + chs.length + ' chapter files</div>' +
+        chs.map(function(c){
+          var href = c.drive || driveHref({file: c.file, title: c.label});
+          var name = c.label || String(c.file || "").split(/[\\\/]/).pop();
+          return href
+            ? '<a class="insp-chl" target="_blank" rel="noopener" href="' + esc(href) + '">' +
+              esc(name) + '</a>'
+            : '<span class="insp-chl">' + esc(name) + '</span>';
+        }).join("");
+      chBox.hidden = false;
+    } else chBox.hidden = true;
+
+    el("insp-abs").value  = r.abstract || "";
+    el("insp-note").value = r.note || "";
+    el("insp-said").textContent = "";
+    el("insp").hidden = false;
+    document.body.classList.add("insp-open");
+    markOpen(id);
+  }
+  function markOpen(id){
+    el("nodes").querySelectorAll(".nd.open").forEach(function(x){ x.classList.remove("open"); });
+    if (!id) return;
+    var n = el("nodes").querySelector('.nd[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+    if (n) n.classList.add("open");
+  }
+  function closeInspector(){
+    inspId = null; el("insp").hidden = true;
+    document.body.classList.remove("insp-open");
+    markOpen(null);
+  }
+
+  el("insp-close").addEventListener("click", closeInspector);
+  document.addEventListener("keydown", function(ev){
+    if (ev.key === "Escape" && !el("insp").hidden) closeInspector();
+  });
+  el("insp-save").addEventListener("click", function(){
+    if (!inspId) return;
+    var id = inspId, where = inspWhere;
+    var abs = el("insp-abs").value.trim(), note = el("insp-note").value.trim();
+    say(el("insp-said"), "saving…");
+    mutate(where, function(rows){
+      rows.forEach(function(x){
+        if (x.id !== id) return;
+        if (abs) x.abstract = abs; else delete x.abstract;
+        if (note) x.note = note; else delete x.note;
+      });
+    }, "Notes on " + id).then(function(){
+      say(el("insp-said"), "saved");
+      if (inspId === id) markOpen(id);
+    })["catch"](function(e){
+      say(el("insp-said"), "not saved — " + (e && e.message ? e.message : "unknown error"));
+    });
+  });
 
   /* --- interaction --- */
   el("nodes").addEventListener("pointerover", function(ev){
@@ -1222,11 +1353,14 @@ window.WB_BUILD = '2026-09-28';
           : '<b>No task in your plan closes this.</b>');
       return;
     }
-    if (thMode !== "connect") return;
+    if (thMode !== "connect"){
+      if (kind === "paper") openInspector(id);
+      return;
+    }
     if (!thSel){ thSel = id; n.classList.add("sel"); return; }
     if (thSel === id){ thSel = null; n.classList.remove("sel"); return; }
-    var kind = el("th-rel").value || "builds on";
-    (boardDoc().edges || (boardDoc().edges = [])).push({from: thSel, to: id, kind: kind});
+    var rel = el("th-rel").value || "builds on";
+    (boardDoc().edges || (boardDoc().edges = [])).push({from: thSel, to: id, kind: rel});
     thSel = null; thDirty = true;
     el("nodes").querySelectorAll(".sel").forEach(function(x){ x.classList.remove("sel"); });
     renderPaperBoard();
@@ -1277,11 +1411,15 @@ window.WB_BUILD = '2026-09-28';
       var n = ev.target.closest(".nd"); if (!n) return;
       var b = boxOf(n.getAttribute("data-id")); if (!b) return;
       var r = el("board").getBoundingClientRect();
-      drag = {n:n, b:b, dx: ev.clientX - r.left - b.x, dy: ev.clientY - r.top - b.y};
+      drag = {n:n, b:b, dx: ev.clientX - r.left - b.x, dy: ev.clientY - r.top - b.y,
+              x0: ev.clientX, y0: ev.clientY, moved: false};
       n.setPointerCapture(ev.pointerId); ev.preventDefault();
     });
     el("nodes").addEventListener("pointermove", function(ev){
       if (!drag) return;
+      if (!drag.moved &&
+          Math.abs(ev.clientX - drag.x0) < 4 && Math.abs(ev.clientY - drag.y0) < 4) return;
+      drag.moved = true;
       var r = el("board").getBoundingClientRect();
       drag.b.x = Math.max(0, ev.clientX - r.left - drag.dx);
       drag.b.y = Math.max(0, ev.clientY - r.top - drag.dy);
@@ -1290,6 +1428,8 @@ window.WB_BUILD = '2026-09-28';
     });
     el("nodes").addEventListener("pointerup", function(){
       if (!drag) return;
+      /* a click that never moved is a click, not a drag — do not pin the card */
+      if (!drag.moved){ drag = null; return; }
       var doc = boardDoc();
       (doc.positions || (doc.positions = {}))[drag.b.id] = {x: Math.round(drag.b.x), y: Math.round(drag.b.y)};
       drag = null; thDirty = true;

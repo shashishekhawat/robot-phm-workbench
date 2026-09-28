@@ -345,6 +345,31 @@
 
     <div id="th-detail" class="verdict-line" hidden></div>
 
+    <aside id="insp" class="insp" hidden aria-label="Paper details">
+      <div class="insp-head">
+        <span class="insp-kind" id="insp-kind">paper</span>
+        <button type="button" class="insp-x" id="insp-close" aria-label="Close details">&times;</button>
+      </div>
+      <h3 id="insp-title">&mdash;</h3>
+      <div class="insp-meta" id="insp-meta"></div>
+      <div class="insp-links" id="insp-links"></div>
+      <div class="insp-why" id="insp-why" hidden></div>
+      <div class="insp-ch" id="insp-ch" hidden></div>
+
+      <label class="insp-lab" for="insp-abs">Abstract</label>
+      <textarea id="insp-abs" class="insp-ta" rows="7"
+        placeholder="Nothing stored yet. Paste the abstract &mdash; or better, write the two lines you would say if someone asked what it does."></textarea>
+
+      <label class="insp-lab" for="insp-note">My notes</label>
+      <textarea id="insp-note" class="insp-ta" rows="9"
+        placeholder="What was actually demonstrated, and on what? Simulation, bench rig, or a real robot? What would have to be true for this to hold on the GP12?"></textarea>
+
+      <div class="insp-foot">
+        <button type="button" class="btn" id="insp-save">Save</button>
+        <span class="said" id="insp-said"></span>
+      </div>
+    </aside>
+
     <div class="note" id="th-note-q">
       <h3>What the threads mean</h3>
       <p>A question is joined to an objective when some task in your plan says it closes that
@@ -362,6 +387,11 @@
       <p><b>Free</b> keeps where you drag things. <b>Chronology</b> lays them out by publication
       date, which exposes what was reinvented rather than built on. <b>Logic</b> stacks them by
       dependency, so what everything rests on sits at the bottom. Only free mode saves positions.</p>
+      <p><b>Click any card</b> in move mode to open it: the abstract, your own notes, and a link
+      that opens the file in Drive in a new tab. Both text boxes save back to the repository, so a
+      note written here is in git history like everything else. Dragging a card moves it; clicking
+      it opens it — the two no longer fight each other.</p>
+
       <p><b>Suggest links</b> proposes edges from shared tags and dates. They arrive dashed and
       provisional — keep the ones you agree with, click the rest away. The point is that you decide.</p>
       <p>Claims carry an evidence mark: assumed, simulated, bench, validated, contradicted. Adding a

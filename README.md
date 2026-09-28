@@ -40,6 +40,12 @@ and you click a thread to reject it. Three layouts: **free** (drag, positions sa
 (stacked by dependency, so what everything rests on sits at the bottom). Only free mode saves
 positions; dragging stays local until you press Save board.
 
+Clicking a card opens it. The panel holds the **abstract**, your own **notes**, and links out: DOI,
+original source, and the file itself in Google Drive. If the entry carries a `drive` field the link
+goes straight to the file; without one it falls back to a Drive search built from the filename,
+which lands on it just the same. Both text boxes write back to the repository — a note on a paper is
+a commit, not a scratch file. Fields you empty are deleted rather than stored blank.
+
 **Field** — submission windows with an intent mark, and a literature feed with triage marks,
 refreshed daily by a GitHub Action in the data repository.
 

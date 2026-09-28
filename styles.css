@@ -429,4 +429,57 @@ code{font-family:var(--f-data);font-size:12.5px;background:var(--surface);
 .nd.pc.kd-report{border-left:3px solid var(--muted)}
 .nd.pc.kd-article{border-left:3px solid var(--muted)}
 .nd.pc.kd-feed{opacity:.72;border-style:dashed}
-.nd.pc .mt.own{color:var(--accent)}
+.nd.pc .mt.own{color:var(--accent);
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+  overflow:hidden}   /* a hint that a note exists — the note itself lives in the panel */
+
+/* ---- paper inspector: the panel a node opens into ---- */
+.insp{
+  position:fixed;top:0;right:0;bottom:0;width:min(420px,92vw);z-index:40;
+  display:flex;flex-direction:column;gap:9px;
+  padding:16px 18px 20px;overflow-y:auto;
+  background:var(--surface);border-left:1px solid var(--rule);
+  box-shadow:-18px 0 44px rgba(0,0,0,.42);
+  animation:insp-in .16s ease-out;
+}
+@keyframes insp-in{from{transform:translateX(18px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.insp{animation:none}}
+.insp-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.insp-kind{font-family:var(--f-data);font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--accent)}
+.insp-x{background:none;border:0;color:var(--muted);font-size:22px;line-height:1;
+  cursor:pointer;padding:0 2px}
+.insp-x:hover{color:var(--ink)}
+.insp h3{margin:0;font-size:15px;line-height:1.35;font-weight:600}
+.insp-meta{font-family:var(--f-data);font-size:10px;letter-spacing:.04em;
+  color:var(--muted);line-height:1.6}
+.insp-links{display:flex;flex-wrap:wrap;gap:7px;margin:3px 0 4px}
+.insp-links .btn{font-size:12px;padding:5px 11px;text-decoration:none}
+.insp-path{font-family:var(--f-data);font-size:10px;color:var(--faint);
+  align-self:center;cursor:help}
+.insp-lab{font-family:var(--f-data);font-size:10px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted);margin-top:4px}
+.insp-ta{
+  width:100%;resize:vertical;padding:9px 10px;
+  background:var(--bg);color:var(--ink);
+  border:1px solid var(--line);border-radius:3px;
+  font-family:var(--f-body);font-size:13px;line-height:1.5;
+}
+.insp-ta:focus{outline:none;border-color:var(--accent)}
+.insp-foot{display:flex;align-items:center;gap:12px;margin-top:6px}
+.nd.open{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+/* give the panel its own room rather than letting it cover live cards */
+body.insp-open .board-wrap{margin-right:min(436px,92vw)}
+@media (max-width:820px){body.insp-open .board-wrap{margin-right:0}}
+
+/* curated context from the source list — read-only, so it never competes
+   with the notes box for the same field */
+.insp-why{padding:8px 10px;border-left:2px solid var(--rule);background:var(--bg);
+  font-size:12px;line-height:1.5;color:var(--ink-soft)}
+.insp-why b{font-family:var(--f-data);font-size:10px;letter-spacing:.07em;color:var(--accent)}
+.insp-ch{display:flex;flex-direction:column;gap:2px;max-height:210px;overflow-y:auto;
+  border:1px solid var(--line-soft);border-radius:3px;padding:6px}
+.insp-ch .insp-lab{margin:0 0 4px}
+.insp-chl{font-size:12px;line-height:1.45;color:var(--ink-soft);text-decoration:none;
+  padding:2px 4px;border-radius:2px}
+.insp-chl:hover{color:var(--accent);background:var(--surface)}
