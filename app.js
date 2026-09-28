@@ -11,7 +11,10 @@ window.WB_BUILD = '2026-09-28';
   var papers = [];
   var deadlines = [];
   var dbRef = null;
-  var ready = {obj:false, work:false, exp:false, q:false, pp:false, dl:false};
+  var tasks = [];
+  var ready = {obj:false, work:false, exp:false, q:false, pp:false, dl:false, tk:false};
+  var plFilter = {needs:"all", objective:"all", track:"all"};
+  var tkOpenId = null;
   var qFilter = {status:"open", cluster:"all"};
   var qOpenId = null;
   var ppFilter = "todo";
@@ -50,7 +53,7 @@ window.WB_BUILD = '2026-09-28';
 
   /* ---------- tabs ---------- */
   var TABS = [["today","tab-today","view-today"],["log","tab-log","view-log"],
-              ["q","tab-q","view-q"],["field","tab-field","view-field"],
+              ["q","tab-q","view-q"],["plan","tab-plan","view-plan"],["field","tab-field","view-field"],
               ["setup","tab-set","view-setup"]];
   function showTab(which){
     if (!TABS.some(function(t){ return t[0] === which; })) which = "today";
@@ -517,8 +520,197 @@ window.WB_BUILD = '2026-09-28';
     }
   });
 
+  /* ---------- rendering: plan ---------- */
+  var FLOW = ["backlog","next","doing","done"];
+  var NEEDS = ["desk","robot","lab","external"];
+
+  chipGroup(el("pl-needs"), [{value:"all",label:"all"}].concat(
+    NEEDS.map(function(n){ return {value:n,label:n}; })), "all");
+  wireChips(el("pl-needs"));
+  el("pl-needs").addEventListener("click", function(ev){
+    var b = ev.target.closest(".chip"); if (!b) return;
+    plFilter.needs = b.getAttribute("data-v"); renderPlan();
+  });
+  el("pl-obj").addEventListener("change", function(){ plFilter.objective = this.value; renderPlan(); });
+  el("pl-track").addEventListener("change", function(){ plFilter.track = this.value; renderPlan(); });
+
+  el("pl-new").addEventListener("click", function(){
+    var f = el("f-task"); f.hidden = !f.hidden;
+    if (!f.hidden) el("k-title").focus();
+  });
+  el("k-cancel").addEventListener("click", function(){ el("f-task").hidden = true; });
+
+  function byId(id){ for (var i=0;i<tasks.length;i++) if (tasks[i].id===id) return tasks[i]; return null; }
+  function waitingOn(t){
+    return (t.after || []).filter(function(id){
+      var p = byId(id); return p && p.status !== "done";
+    });
+  }
+
+  function fillSelect(node, opts, val){
+    var want = opts.map(function(o){
+      return '<option value="' + esc(o.v) + '">' + esc(o.l) + '</option>'; }).join("");
+    if (node.innerHTML !== want) node.innerHTML = want;
+    if (val != null) node.value = val;
+  }
+
+  function renderPlan(){
+    var tracks = []; tasks.forEach(function(t){ if (t.track && tracks.indexOf(t.track)<0) tracks.push(t.track); });
+    fillSelect(el("pl-obj"), [{v:"all",l:"All objectives"}].concat(objectives.map(function(o){
+      return {v:o.id, l:(o.num? o.num+" ":"")+o.short}; })), plFilter.objective);
+    fillSelect(el("pl-track"), [{v:"all",l:"All tracks"}].concat(tracks.map(function(t){
+      return {v:t,l:t}; })), plFilter.track);
+    fillSelect(el("k-obj"), objectives.map(function(o){
+      return {v:o.id, l:(o.num? o.num+" ":"")+o.short}; }), null);
+
+    var rows = tasks.filter(function(t){
+      if (plFilter.needs !== "all" && t.needs !== plFilter.needs) return false;
+      if (plFilter.objective !== "all" && t.objective !== plFilter.objective) return false;
+      if (plFilter.track !== "all" && t.track !== plFilter.track) return false;
+      return true;
+    });
+
+    var open = rows.filter(function(t){ return t.status !== "done"; });
+    var hrs = open.reduce(function(a,t){ return a + (+t.effort || 0); }, 0);
+    el("plan-tally").textContent = open.length + " open · " + Math.round(hrs) + " h estimated";
+
+    if (!rows.length){ el("plan-list").innerHTML = '<div class="msg">Nothing matches that filter.</div>'; return; }
+
+    var order = ["doing","next","backlog","blocked","done"];
+    var html = "";
+    order.forEach(function(st){
+      var g = rows.filter(function(t){ return (t.status||"backlog") === st; })
+                  .sort(function(a,b){ return (a.n||0)-(b.n||0); });
+      if (!g.length) return;
+      var gh = g.reduce(function(a,t){ return a + (+t.effort || 0); }, 0);
+      html += '<div class="grouphead"><b>' + esc(st) + '</b> · ' + g.length +
+              (st !== "done" ? " · " + Math.round(gh) + " h" : "") + '</div>';
+      html += g.map(taskRow).join("");
+    });
+    el("plan-list").innerHTML = html;
+  }
+
+  function taskRow(t){
+    var st = t.status || "backlog", wait = waitingOn(t), open = t.id === tkOpenId;
+    var next = FLOW[(FLOW.indexOf(st) + 1) % FLOW.length];
+    var edit = open ? '<div class="tk-edit">' +
+        '<div class="field"><label for="tk-note">Notes and outcome</label>' +
+        '<textarea id="tk-note">' + esc(t.note || "") + '</textarea></div>' +
+        '<div class="two"><div class="field"><label for="tk-act">Actual hours</label>' +
+        '<input type="number" id="tk-act" step="0.5" min="0" value="' + esc(t.actual == null ? "" : t.actual) + '"></div>' +
+        '<div class="field"><label for="tk-week">Target week</label>' +
+        '<input type="text" id="tk-week" placeholder="2026-W40" value="' + esc(t.week || "") + '"></div></div>' +
+        '<div class="actions"><button type="button" class="btn" data-tk="save" data-id="' + esc(t.id) + '">Save</button>' +
+        '<button type="button" class="btn ghost" data-tk="block" data-id="' + esc(t.id) + '">' +
+        (st === "blocked" ? "Unblock" : "Blocked") + '</button>' +
+        '<span class="said" id="tk-said"></span></div></div>' : "";
+    return '<article class="tk st-' + esc(st) + (wait.length && st !== "done" ? " waiting" : "") + '">' +
+      '<div class="stripe"></div>' +
+      '<div class="tk-s"><button type="button" data-tk="flow" data-id="' + esc(t.id) +
+        '" title="Move to ' + esc(next) + '">' + esc(st) + '</button></div>' +
+      '<div class="tk-b">' +
+        '<p class="tk-t" data-tk="open" data-id="' + esc(t.id) + '">' + esc(t.title) + '</p>' +
+        '<p class="tk-d">' + esc(t.done) + '</p>' +
+        '<div class="tk-m">' +
+          '<span class="need">' + esc(t.needs) + '</span>' +
+          '<span>' + esc(objLabel(t.objective)) + '</span>' +
+          '<span>' + esc(t.track) + '</span>' +
+          (t.effort ? '<span>' + esc(t.effort) + ' h est</span>' : '') +
+          (t.actual != null ? '<span>' + esc(t.actual) + ' h actual</span>' : '') +
+          (t.week ? '<span>' + esc(t.week) + '</span>' : '') +
+          (wait.length && st !== "done" ? '<span class="wait">waiting on ' + esc(wait.join(", ")) + '</span>' : '') +
+          ((t.answers||[]).length ? '<span>closes ' + esc(t.answers.join(", ")) + '</span>' : '') +
+        '</div>' +
+      '</div>' + edit +
+    '</article>';
+  }
+
+  function renderDoNow(){
+    var live = tasks.filter(function(t){
+      var st = t.status || "backlog";
+      return (st === "doing" || st === "next") && !waitingOn(t).length;
+    }).sort(function(a,b){
+      var w = {desk:0, external:1, robot:2, lab:3};
+      var d = (w[a.needs]==null?9:w[a.needs]) - (w[b.needs]==null?9:w[b.needs]);
+      return d || (a.n||0)-(b.n||0);
+    });
+    el("now-tally").textContent = live.length ? live.length + " ready" : "nothing queued";
+    if (!live.length){
+      el("donow").innerHTML = '<div class="msg">Nothing is marked <b>next</b> or <b>doing</b>. Open <b>Plan</b> and pull something into the queue.</div>';
+      return;
+    }
+    el("donow").innerHTML = live.slice(0,5).map(function(t){
+      return '<article class="tk st-' + esc(t.status) + '">' +
+        '<div class="stripe"></div>' +
+        '<div class="tk-s"><button type="button" data-tk="flow" data-id="' + esc(t.id) + '">' + esc(t.status) + '</button></div>' +
+        '<div class="tk-b"><p class="tk-t">' + esc(t.title) + '</p>' +
+        '<p class="tk-d">' + esc(t.done) + '</p>' +
+        '<div class="tk-m"><span class="need">' + esc(t.needs) + '</span>' +
+        '<span>' + esc(objLabel(t.objective)) + '</span>' +
+        (t.effort ? '<span>' + esc(t.effort) + ' h est</span>' : '') + '</div></div></article>';
+    }).join("");
+  }
+
+  function taskClicks(ev){
+    var b = ev.target.closest("[data-tk]");
+    if (!b || !dbRef) return;
+    var act = b.getAttribute("data-tk"), id = b.getAttribute("data-id"), t = byId(id);
+    if (!t) return;
+    if (act === "open"){ tkOpenId = (tkOpenId === id) ? null : id; renderPlan(); return; }
+    if (act === "flow"){
+      var st = t.status || "backlog";
+      var nx = st === "blocked" ? "next" : FLOW[(FLOW.indexOf(st) + 1) % FLOW.length];
+      var patch = {status: nx};
+      if (nx === "doing" && !t.startedOn) patch.startedOn = todayISO();
+      if (nx === "done") patch.doneOn = todayISO();
+      if (nx === "backlog"){ patch.startedOn = ""; patch.doneOn = ""; }
+      b.disabled = true;
+      dbRef.collection("tasks").doc(id).update(patch)["catch"](function(){ b.disabled = false; });
+      return;
+    }
+    if (act === "block"){
+      dbRef.collection("tasks").doc(id).update({status: t.status === "blocked" ? "next" : "blocked"})["catch"](function(){});
+      return;
+    }
+    if (act === "save"){
+      var act_h = parseFloat((el("tk-act")||{}).value);
+      b.disabled = true;
+      dbRef.collection("tasks").doc(id).update({
+        note: (el("tk-note")||{}).value || "",
+        actual: isFinite(act_h) ? act_h : null,
+        week: (el("tk-week")||{}).value || ""
+      }).then(function(){ tkOpenId = null; })["catch"](function(e){
+        var s = el("tk-said"); if (s) say(s, failText(e));
+        b.disabled = false;
+      });
+    }
+  }
+  el("view-plan").addEventListener("click", taskClicks);
+  el("donow").addEventListener("click", taskClicks);
+
+  el("f-task").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    if (!dbRef) return;
+    var title = el("k-title").value.trim(), done = el("k-done").value.trim();
+    if (!title || !done) return;
+    var eff = parseFloat(el("k-eff").value);
+    var btn = el("k-save"); btn.disabled = true;
+    dbRef.collection("tasks").add({
+      n: tasks.reduce(function(m,t){ return Math.max(m, t.n||0); }, 0) + 1,
+      title: title, done: done,
+      objective: el("k-obj").value || "", needs: el("k-needs").value || "desk",
+      track: "", effort: isFinite(eff) ? eff : null, status: "backlog",
+      week: "", after: [], answers: [], note: "", startedOn: "", doneOn: "", actual: null
+    }).then(function(){
+      el("k-title").value = ""; el("k-done").value = ""; el("k-eff").value = "";
+      el("f-task").hidden = true;
+    })["catch"](function(e){ say(el("k-said"), failText(e)); })
+     ["finally"](function(){ btn.disabled = false; });
+  });
+
   function renderAll(){
     if (ready.obj) { renderAges(); objChips(); }
+    if (ready.obj && ready.tk) { renderPlan(); renderDoNow(); }
     if (ready.work && ready.exp) { renderCounts(); renderRecent(); }
     if (ready.q) { renderQuestions(); }
     if (ready.pp) { renderPapers(); }
@@ -532,6 +724,10 @@ window.WB_BUILD = '2026-09-28';
     el("recent").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("q-progress").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("q-list").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
+    el("plan-list").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
+    el("donow").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
+    el("plan-tally").textContent = "—";
+    el("now-tally").textContent = "—";
     el("deadlines").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("papers").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("dl-tally").textContent = "—";
@@ -634,7 +830,7 @@ window.WB_BUILD = '2026-09-28';
      machine is never silently clobbered.
      ========================================================== */
   var CFG = window.WB_CONFIG || {};
-  var FILES = ["objectives","questions","worklog","experiments","papers","opportunities"];
+  var FILES = ["objectives","questions","worklog","experiments","papers","opportunities","tasks"];
   var files = {};        // name -> {rows, sha}
   var token = null;
 
@@ -748,7 +944,8 @@ window.WB_BUILD = '2026-09-28';
     experiments = files.experiments.rows || [];
     papers      = files.papers.rows      || [];
     deadlines   = files.opportunities.rows || [];
-    ready = {obj:true, work:true, exp:true, q:true, pp:true, dl:true};
+    tasks = (files.tasks.rows || []).slice().sort(function(a,b){ return (a.n||0)-(b.n||0); });
+    ready = {obj:true, work:true, exp:true, q:true, pp:true, dl:true, tk:true};
   }
 
   /* ---------- token handling ---------- */

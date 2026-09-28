@@ -19,6 +19,11 @@ lives). Refutations are counted as output, not failure.
 **Questions** — the 61 critical questions agreed after DC-1, filterable by cluster and status.
 Closing one means writing the answer, so the metric and the thesis material are the same act.
 
+**Plan** — the work queue. Every task names the artifact that makes it done, what access it
+needs (desk / robot / lab / external), an hour estimate and which of the 61 questions it closes.
+Filter by *needs* first: most days you are at a desk. A task whose prerequisite is unfinished is
+marked *waiting*. Click the status to move it along: backlog, next, doing, done.
+
 **Field** — submission windows with an intent mark, and a literature feed with triage marks,
 refreshed daily by a GitHub Action in the data repository.
 

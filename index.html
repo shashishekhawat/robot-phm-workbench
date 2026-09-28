@@ -8,6 +8,7 @@
       <button class="tab" id="tab-today" role="tab" aria-selected="true" aria-controls="view-today">Today</button>
       <button class="tab" id="tab-log" role="tab" aria-selected="false" aria-controls="view-log">Log</button>
       <button class="tab" id="tab-q" role="tab" aria-selected="false" aria-controls="view-q">Questions</button>
+      <button class="tab" id="tab-plan" role="tab" aria-selected="false" aria-controls="view-plan">Plan</button>
       <button class="tab" id="tab-field" role="tab" aria-selected="false" aria-controls="view-field">Field</button>
       <button class="tab" id="tab-set" role="tab" aria-selected="false" aria-controls="view-setup" hidden>Setup</button>
     </div>
@@ -24,6 +25,12 @@
 
   <!-- ================= TODAY ================= -->
   <section id="view-today" role="tabpanel" aria-labelledby="tab-today">
+    <div class="panel-head">
+      <h2>What you can do now</h2>
+      <span class="tally" id="now-tally">—</span>
+    </div>
+    <div id="donow"><div class="msg">Loading…</div></div>
+
     <div class="panel-head">
       <h2>Days since each objective was touched</h2>
       <span class="tally" id="ages-tally">loading</span>
@@ -220,7 +227,55 @@
     </div>
   </section>
 
-  <!-- ================= SETUP ================= -->
+  
+  <!-- ================= PLAN ================= -->
+  <section id="view-plan" role="tabpanel" aria-labelledby="tab-plan" hidden>
+    <div class="panel-head">
+      <h2>Work queue</h2>
+      <span class="tally" id="plan-tally">—</span>
+    </div>
+
+    <div class="filters">
+      <div class="chips" id="pl-needs" role="group" aria-label="Filter by what it needs"></div>
+      <select id="pl-obj" aria-label="Filter by objective"></select>
+      <select id="pl-track" aria-label="Filter by track"></select>
+      <button type="button" class="btn ghost" id="pl-new">New task</button>
+    </div>
+
+    <form id="f-task" hidden>
+      <div class="two">
+        <div class="field"><label for="k-needs">Needs</label>
+          <select id="k-needs">
+            <option value="desk">desk</option><option value="robot">robot</option>
+            <option value="lab">lab</option><option value="external">external</option>
+          </select></div>
+        <div class="field"><label for="k-title">Task</label>
+          <input type="text" id="k-title" required placeholder="Log the M registers during a trajectory"></div>
+      </div>
+      <div class="field"><label for="k-done">Done when <span class="hint">name the artifact, not the feeling</span></label>
+        <input type="text" id="k-done" required placeholder="A CSV of torque command against time, with the measured sample interval"></div>
+      <div class="two">
+        <div class="field"><label for="k-obj">Objective</label><select id="k-obj"></select></div>
+        <div class="field"><label for="k-eff">Estimated hours</label>
+          <input type="number" id="k-eff" step="0.5" min="0" placeholder="8"></div>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn" id="k-save">Add task</button>
+        <button type="button" class="btn ghost" id="k-cancel">Cancel</button>
+        <span class="said" id="k-said"></span>
+      </div>
+    </form>
+
+    <div id="plan-list"><div class="msg">Loading…</div></div>
+
+    <div class="note">
+      <h3>How this is meant to be used</h3>
+      <p>Filter by <b>what it needs</b> first. Most days you are at a desk, and nineteen of these need nothing else — staring at the robot tasks when you have no robot booked is how a queue becomes noise.</p>
+      <p>A task marked <b>waiting</b> has an unfinished prerequisite. Click the status to move a task along: backlog, next, doing, done. Estimates will be wrong at first; recording the actual hours is how they stop being wrong.</p>
+    </div>
+  </section>
+
+<!-- ================= SETUP ================= -->
   <section id="view-setup" role="tabpanel" aria-labelledby="tab-set" hidden>
     <div class="panel-head">
       <h2>Connect the data repository</h2>
