@@ -12,6 +12,11 @@ window.WB_BUILD = '2026-09-28';
   var deadlines = [];
   var dbRef = null;
   var tasks = [];
+  var board = [];
+  var thWhich = "questions";
+  var thMode = "move";
+  var thSel = null;
+  var thDirty = false;
   var ready = {obj:false, work:false, exp:false, q:false, pp:false, dl:false, tk:false};
   var plFilter = {needs:"all", objective:"all", track:"all"};
   var tkOpenId = null;
@@ -53,7 +58,7 @@ window.WB_BUILD = '2026-09-28';
 
   /* ---------- tabs ---------- */
   var TABS = [["today","tab-today","view-today"],["log","tab-log","view-log"],
-              ["q","tab-q","view-q"],["plan","tab-plan","view-plan"],["field","tab-field","view-field"],
+              ["q","tab-q","view-q"],["plan","tab-plan","view-plan"],["threads","tab-threads","view-threads"],["field","tab-field","view-field"],
               ["setup","tab-set","view-setup"]];
   function showTab(which){
     if (!TABS.some(function(t){ return t[0] === which; })) which = "today";
@@ -708,9 +713,386 @@ window.WB_BUILD = '2026-09-28';
      ["finally"](function(){ btn.disabled = false; });
   });
 
+
+  /* ================= year heatmap ================= */
+  var HEAT_RAMP = ["#232830","#5C4A28","#8A6B2E","#C79A45","#FFCC66"];
+
+  function dayCounts(){
+    var m = {};
+    function bump(d, what, h){
+      if (!d) return;
+      var c = m[d] || (m[d] = {n:0, hours:0, parts:[]});
+      c.n++; if (h) c.hours += h;
+      if (c.parts.indexOf(what) < 0) c.parts.push(what);
+    }
+    worklog.forEach(function(r){ bump(r.date, "log", parseFloat(r.hours) || 0); });
+    experiments.forEach(function(r){ bump(r.date, "experiment"); });
+    tasks.forEach(function(t){ if (t.doneOn) bump(t.doneOn, "task done"); });
+    questions.forEach(function(q){ if (q.answeredOn) bump(q.answeredOn, "question closed"); });
+    return m;
+  }
+
+  function renderHeat(){
+    var counts = dayCounts(), host = el("heat");
+    var today = midnight(new Date());
+    var end = new Date(today); end.setDate(end.getDate() + (6 - end.getDay()));
+    var start = new Date(end); start.setDate(start.getDate() - (53 * 7 - 1));
+
+    var CELL = 11, GAP = 3, STEP = CELL + GAP, PADL = 26, PADT = 16;
+    var W = PADL + 53 * STEP, H = PADT + 7 * STEP + 4;
+    var cells = "", months = "", lastMonth = -1, lastMonthW = -3, total = 0, active = 0, streak = 0, best = 0;
+
+    for (var w = 0; w < 53; w++){
+      for (var d = 0; d < 7; d++){
+        var day = new Date(start); day.setDate(day.getDate() + w * 7 + d);
+        if (day > today) continue;
+        var iso = day.getFullYear() + "-" + String(day.getMonth()+1).padStart(2,"0") +
+                  "-" + String(day.getDate()).padStart(2,"0");
+        var c = counts[iso], n = c ? c.n : 0;
+        total += n; if (n) { active++; streak++; best = Math.max(best, streak); } else streak = 0;
+        var lvl = n === 0 ? 0 : n === 1 ? 1 : n === 2 ? 2 : n <= 4 ? 3 : 4;
+        var label = day.toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"}) +
+          (c ? " — " + c.n + (c.n === 1 ? " entry" : " entries") +
+               (c.hours ? ", " + (Math.round(c.hours*10)/10) + " h" : "") +
+               " (" + c.parts.join(", ") + ")"
+             : " — nothing logged");
+        cells += '<rect class="cell" x="' + (PADL + w*STEP) + '" y="' + (PADT + d*STEP) +
+                 '" width="' + CELL + '" height="' + CELL + '" rx="2" fill="' + HEAT_RAMP[lvl] +
+                 '"><title>' + esc(label) + '</title></rect>';
+        if (d === 0 && day.getMonth() !== lastMonth && (w - lastMonthW) >= 3){
+          lastMonth = day.getMonth(); lastMonthW = w;
+          months += '<text x="' + (PADL + w*STEP) + '" y="10">' +
+                    day.toLocaleDateString(undefined,{month:"short"}) + '</text>';
+        }
+      }
+    }
+    ["Mon","Wed","Fri"].forEach(function(nm, i){
+      cells += '<text x="0" y="' + (PADT + (1 + i*2)*STEP + 9) + '">' + nm + '</text>';
+    });
+
+    el("heat-tally").textContent = total + " in the year · " + active + " active days";
+    host.innerHTML = '<div class="heat-wrap"><svg width="' + W + '" height="' + H +
+      '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Daily research activity">' +
+      months + cells + '</svg></div>' +
+      '<div class="heat-legend"><span>longest run ' + best + ' days</span><span>·</span><span>less</span>' +
+      HEAT_RAMP.map(function(c){ return '<i style="background:' + c + '"></i>'; }).join("") +
+      '<span>more</span></div>';
+  }
+
+  /* ================= threads board ================= */
+  var REL = ["builds on","contradicts","same method","supports my claim"];
+
+  chipGroup(el("th-which"), [{value:"questions",label:"question routes"},
+                             {value:"papers",label:"paper board"}], "questions");
+  wireChips(el("th-which"));
+  el("th-which").addEventListener("click", function(ev){
+    var b = ev.target.closest(".chip"); if (!b) return;
+    thWhich = b.getAttribute("data-v"); thSel = null; renderBoard();
+  });
+  chipGroup(el("th-mode"), [{value:"move",label:"move"},{value:"connect",label:"connect"}], "move");
+  wireChips(el("th-mode"));
+  el("th-mode").addEventListener("click", function(ev){
+    var b = ev.target.closest(".chip"); if (!b) return;
+    thMode = b.getAttribute("data-v"); thSel = null; paintThreads();
+  });
+
+  function boardDoc(){
+    for (var i=0;i<board.length;i++) if (board[i].id === "papers") return board[i];
+    return {id:"papers", positions:{}, edges:[], notes:[]};
+  }
+
+  var nodeBoxes = [];   // {id, x, y, w, h}
+
+  function curve(a, b, sag){
+    var x1 = a.x + a.w/2, y1 = a.y + a.h/2, x2 = b.x + b.w/2, y2 = b.y + b.h/2;
+    var mx = (x1+x2)/2, my = (y1+y2)/2 + (sag == null ? 26 : sag);
+    return "M" + x1 + "," + y1 + " Q" + mx + "," + my + " " + x2 + "," + y2;
+  }
+
+  function measureNodes(){
+    el("nodes").querySelectorAll(".nd").forEach(function(n){
+      var b = boxOf(n.getAttribute("data-id"));
+      if (b){ b.w = n.offsetWidth; b.h = n.offsetHeight; }
+    });
+  }
+  function boxOf(id){ for (var i=0;i<nodeBoxes.length;i++) if (nodeBoxes[i].id===id) return nodeBoxes[i]; return null; }
+
+  var edgeList = [];    // {from, to, kind}
+  function paintThreads(first){
+    var svg = el("threads"), out = "";
+    edgeList.forEach(function(e, i){
+      var a = boxOf(e.from), b = boxOf(e.to);
+      if (!a || !b) return;
+      out += '<path d="' + curve(a,b) + '" data-e="' + i + '"' +
+             (first ? ' class="drawin"' : '') + '></path>';
+    });
+    svg.innerHTML = out;
+    if (first) requestAnimationFrame(function(){
+      svg.querySelectorAll("path.drawin").forEach(function(p){
+        try { p.style.setProperty("--len", p.getTotalLength()); } catch(e){}
+      });
+    });
+  }
+
+  function litFor(id){
+    var svg = el("threads");
+    var paths = svg.querySelectorAll("path");
+    if (!id){ paths.forEach(function(p){ p.classList.remove("lit","dim"); });
+      el("nodes").querySelectorAll(".nd").forEach(function(n){ n.classList.remove("dim"); });
+      return; }
+    var touches = edgeList.some(function(e){ return e.from === id || e.to === id; });
+    if (!touches){
+      paths.forEach(function(p){ p.classList.remove("lit","dim"); });
+      el("nodes").querySelectorAll(".nd").forEach(function(n){ n.classList.remove("dim"); });
+      return;
+    }
+    var keep = {};
+    keep[id] = 1;
+    paths.forEach(function(p){
+      var e = edgeList[+p.getAttribute("data-e")];
+      if (e && (e.from === id || e.to === id)){
+        p.classList.add("lit"); p.classList.remove("dim");
+        keep[e.from] = 1; keep[e.to] = 1;
+      } else { p.classList.add("dim"); p.classList.remove("lit"); }
+    });
+    el("nodes").querySelectorAll(".nd").forEach(function(n){
+      n.classList.toggle("dim", !keep[n.getAttribute("data-id")]);
+    });
+  }
+
+  /* --- magnetic cursor --- */
+  var magRaf = null, magPt = null;
+  function magnet(ev){
+    var r = el("board").getBoundingClientRect();
+    magPt = {x: ev.clientX - r.left, y: ev.clientY - r.top};
+    if (magRaf) return;
+    magRaf = requestAnimationFrame(function(){
+      magRaf = null;
+      if (!magPt) return;
+      el("nodes").querySelectorAll(".nd").forEach(function(n){
+        var b = boxOf(n.getAttribute("data-id")); if (!b) return;
+        var dx = magPt.x - (b.x + b.w/2), dy = magPt.y - (b.y + b.h/2);
+        var d = Math.hypot(dx, dy);
+        if (d > 130 || d < 1){ n.style.transform = ""; return; }
+        var k = (1 - d/130) * 7;
+        n.style.transform = "translate(" + (dx/d*k).toFixed(2) + "px," + (dy/d*k).toFixed(2) + "px)";
+      });
+      if (thMode === "connect" && thSel){
+        var a = boxOf(thSel);
+        if (a) el("threads").insertAdjacentHTML("beforeend",
+          '<path class="live" d="M' + (a.x+a.w/2) + ',' + (a.y+a.h/2) +
+          ' Q' + ((a.x+a.w/2+magPt.x)/2) + ',' + ((a.y+a.h/2+magPt.y)/2 + 20) +
+          ' ' + magPt.x + ',' + magPt.y + '"></path>');
+      }
+    });
+  }
+  el("board").addEventListener("pointermove", function(ev){
+    if (thMode === "connect" && thSel){
+      el("threads").querySelectorAll("path.live").forEach(function(p){ p.remove(); });
+    }
+    magnet(ev);
+  });
+  el("board").addEventListener("pointerleave", function(){
+    magPt = null;
+    el("nodes").querySelectorAll(".nd").forEach(function(n){ n.style.transform = ""; });
+    el("threads").querySelectorAll("path.live").forEach(function(p){ p.remove(); });
+    litFor(null);
+  });
+
+  /* --- the two boards --- */
+  function renderQuestionRoutes(){
+    var clusters = [];
+    questions.forEach(function(q){ if (clusters.indexOf(q.cluster) < 0) clusters.push(q.cluster); });
+    var tracked = objectives.filter(function(o){ return o.track !== false; });
+
+    var HUBW = 150, COLW = 86, TOP = 96, ROWH = 40;
+    var routes = {};   // qid -> {objId:1}
+    tasks.forEach(function(t){
+      (t.answers || []).forEach(function(qid){
+        (routes[qid] || (routes[qid] = {}))[t.objective] = 1;
+      });
+    });
+
+    nodeBoxes = []; edgeList = [];
+    var html = "", W = Math.max(clusters.length * COLW + 40, tracked.length * (HUBW + 24));
+
+    tracked.forEach(function(o, i){
+      var x = 20 + i * (W - HUBW - 20) / Math.max(tracked.length - 1, 1), y = 8;
+      nodeBoxes.push({id:"hub-"+o.id, x:x, y:y, w:HUBW, h:58});
+      html += '<div class="nd hub" data-id="hub-' + esc(o.id) + '" style="left:' + x + 'px;top:' + y + 'px">' +
+              '<b>' + esc(o.num || "") + '</b><span>' + esc(o.short) + '</span></div>';
+    });
+
+    var noRoute = 0, routed = 0;
+    clusters.forEach(function(cl, ci){
+      var x = 20 + ci * COLW;
+      var short = cl.replace(/^(the|a)\s+/i, "").split(" ")[0].slice(0, 7);
+      html += '<div class="clab" title="' + esc(cl) + '" style="left:' + x + 'px;top:' + (TOP - 16) +
+              'px;width:' + (COLW - 10) + 'px">' + esc(short) + '</div>';
+      questions.filter(function(q){ return q.cluster === cl; }).forEach(function(q, qi){
+        var y = TOP + qi * ROWH;
+        var r = routes[q.id], has = r && Object.keys(r).length;
+        if (has) routed++; else noRoute++;
+        var cls = "nd q" + (q.status === "answered" || q.status === "dropped" ? " closed" : (has ? " routed" : ""));
+        nodeBoxes.push({id:q.id, x:x, y:y, w:52, h:30});
+        html += '<div class="' + cls + '" data-id="' + esc(q.id) + '" data-kind="q" style="left:' +
+                x + 'px;top:' + y + 'px" title="' + esc(q.text.slice(0,120)) + '">' +
+                esc("Q" + q.n) + '</div>';
+        if (has) Object.keys(r).forEach(function(oid){
+          if (boxOf("hub-" + oid)) edgeList.push({from:q.id, to:"hub-"+oid});
+        });
+      });
+    });
+
+    el("th-head").textContent = "Question routes";
+    el("th-tally").textContent = routed + " routed · " + noRoute + " with no route";
+    el("th-mode").hidden = true; el("th-note").hidden = true; el("th-save").hidden = true;
+    el("th-note-q").hidden = false; el("th-note-p").hidden = true;
+    el("nodes").innerHTML = html;
+    var maxY = nodeBoxes.reduce(function(m,b){ return Math.max(m, b.y + b.h); }, 0);
+    el("board").style.width = W + "px";
+    el("board").style.height = (maxY + 40) + "px";
+    measureNodes(); paintThreads(true);
+  }
+
+  function renderPaperBoard(){
+    var doc = boardDoc(), pos = doc.positions || {}, notes = doc.notes || [];
+    var picked = papers.filter(function(p){
+      return pos[p.id] || ["reading","read","cited"].indexOf(p.triage) >= 0;
+    });
+    if (!picked.length) picked = papers.slice(0, 10);
+
+    nodeBoxes = []; edgeList = (doc.edges || []).slice();
+    var html = "", i = 0;
+    picked.forEach(function(p){
+      var d = pos[p.id] || {x: 30 + (i % 5) * 215, y: 30 + Math.floor(i / 5) * 130};
+      i++;
+      nodeBoxes.push({id:p.id, x:d.x, y:d.y, w:190, h:78});
+      html += '<div class="nd pc" data-id="' + esc(p.id) + '" data-kind="p" style="left:' + d.x +
+              'px;top:' + d.y + 'px"><h4>' + esc(String(p.title).slice(0,78)) +
+              (String(p.title).length > 78 ? "…" : "") + '</h4>' +
+              '<div class="mt">' + esc(p.arxivId || p.source || "") + ' · ' + esc(p.triage || "unread") + '</div></div>';
+    });
+    notes.forEach(function(n){
+      nodeBoxes.push({id:n.id, x:n.x, y:n.y, w:160, h:60});
+      html += '<div class="nd pin" data-id="' + esc(n.id) + '" data-kind="n" style="left:' + n.x +
+              'px;top:' + n.y + 'px">' + esc(n.text) + '</div>';
+    });
+
+    el("th-head").textContent = "Paper board";
+    el("th-tally").textContent = picked.length + " cards · " + edgeList.length + " threads" +
+                                 (thDirty ? " · unsaved" : "");
+    el("th-mode").hidden = false; el("th-note").hidden = false; el("th-save").hidden = false;
+    el("th-note-q").hidden = true; el("th-note-p").hidden = false;
+    el("nodes").innerHTML = html;
+    var maxX = nodeBoxes.reduce(function(m,b){ return Math.max(m, b.x + b.w); }, 600);
+    var maxY = nodeBoxes.reduce(function(m,b){ return Math.max(m, b.y + b.h); }, 400);
+    el("board").style.width = (maxX + 60) + "px";
+    el("board").style.height = (maxY + 60) + "px";
+    measureNodes(); paintThreads(true);
+  }
+
+  function renderBoard(){
+    if (!ready.q || !ready.obj) return;
+    if (thWhich === "papers") renderPaperBoard(); else renderQuestionRoutes();
+  }
+
+  /* --- interaction --- */
+  el("nodes").addEventListener("pointerover", function(ev){
+    var n = ev.target.closest(".nd"); if (n) litFor(n.getAttribute("data-id"));
+  });
+
+  el("nodes").addEventListener("click", function(ev){
+    var n = ev.target.closest(".nd"); if (!n) return;
+    var id = n.getAttribute("data-id"), kind = n.getAttribute("data-kind");
+    if (thWhich === "questions"){
+      var q = null; questions.forEach(function(x){ if (x.id === id) q = x; });
+      if (!q) return;
+      var closers = tasks.filter(function(t){ return (t.answers||[]).indexOf(id) >= 0; });
+      el("th-detail").hidden = false;
+      el("th-detail").innerHTML = '<b>Q' + esc(q.n) + ' · ' + esc(q.cluster) + '</b><br>' + esc(q.text) +
+        '<br><br>' + (closers.length
+          ? 'Closed by: ' + closers.map(function(t){ return esc(t.title); }).join("; ")
+          : '<b>No task in your plan closes this.</b>');
+      return;
+    }
+    if (thMode !== "connect") return;
+    if (!thSel){ thSel = id; n.classList.add("sel"); return; }
+    if (thSel === id){ thSel = null; n.classList.remove("sel"); return; }
+    edgeList.push({from: thSel, to: id, kind: REL[0]});
+    (boardDoc().edges || (boardDoc().edges = [])).push({from: thSel, to: id, kind: REL[0]});
+    thSel = null; thDirty = true;
+    el("nodes").querySelectorAll(".sel").forEach(function(x){ x.classList.remove("sel"); });
+    renderPaperBoard();
+  });
+
+  /* drag, papers board only */
+  (function(){
+    var drag = null;
+    el("nodes").addEventListener("pointerdown", function(ev){
+      if (thWhich !== "papers" || thMode !== "move") return;
+      var n = ev.target.closest(".nd"); if (!n) return;
+      var b = boxOf(n.getAttribute("data-id")); if (!b) return;
+      var r = el("board").getBoundingClientRect();
+      drag = {n:n, b:b, dx: ev.clientX - r.left - b.x, dy: ev.clientY - r.top - b.y};
+      n.setPointerCapture(ev.pointerId); ev.preventDefault();
+    });
+    el("nodes").addEventListener("pointermove", function(ev){
+      if (!drag) return;
+      var r = el("board").getBoundingClientRect();
+      drag.b.x = Math.max(0, ev.clientX - r.left - drag.dx);
+      drag.b.y = Math.max(0, ev.clientY - r.top - drag.dy);
+      drag.n.style.left = drag.b.x + "px"; drag.n.style.top = drag.b.y + "px";
+      paintThreads();
+    });
+    el("nodes").addEventListener("pointerup", function(){
+      if (!drag) return;
+      var doc = boardDoc();
+      (doc.positions || (doc.positions = {}))[drag.b.id] = {x: Math.round(drag.b.x), y: Math.round(drag.b.y)};
+      drag = null; thDirty = true;
+      el("th-tally").textContent = el("th-tally").textContent.replace(/ · unsaved$/, "") + " · unsaved";
+    });
+  })();
+
+  el("th-note").addEventListener("click", function(){
+    var txt = (el("th-detail").hidden ? "" : "");
+    var doc = boardDoc();
+    (doc.notes || (doc.notes = [])).push({
+      id: "pin-" + Date.now().toString(36), x: 40, y: 40,
+      text: "New pin — click to edit, then Save layout"
+    });
+    thDirty = true; renderPaperBoard();
+  });
+
+  el("nodes").addEventListener("dblclick", function(ev){
+    var n = ev.target.closest(".nd.pin"); if (!n) return;
+    var doc = boardDoc(), id = n.getAttribute("data-id");
+    (doc.notes || []).forEach(function(p){
+      if (p.id !== id) return;
+      var v = window.prompt ? null : null;   // prompt is blocked in the frame
+      var box = document.createElement("textarea");
+      box.value = p.text; box.style.width = "100%"; box.style.minHeight = "56px";
+      n.innerHTML = ""; n.appendChild(box); box.focus();
+      box.addEventListener("blur", function(){ p.text = box.value; thDirty = true; renderPaperBoard(); });
+    });
+  });
+
+  el("th-save").addEventListener("click", function(){
+    if (!dbRef) return;
+    var doc = boardDoc(), btn = el("th-save");
+    btn.disabled = true;
+    dbRef.collection("board").doc("papers").update({
+      positions: doc.positions || {}, edges: doc.edges || [], notes: doc.notes || []
+    }).then(function(){ thDirty = false; say(el("th-said"), "Layout saved."); })
+     ["catch"](function(e){ say(el("th-said"), failText(e)); })
+     ["finally"](function(){ btn.disabled = false; });
+  });
+
   function renderAll(){
     if (ready.obj) { renderAges(); objChips(); }
     if (ready.obj && ready.tk) { renderPlan(); renderDoNow(); }
+    if (ready.work && ready.exp && ready.q && ready.tk) renderHeat();
+    if (ready.q && ready.obj && ready.tk && ready.pp) renderBoard();
     if (ready.work && ready.exp) { renderCounts(); renderRecent(); }
     if (ready.q) { renderQuestions(); }
     if (ready.pp) { renderPapers(); }
@@ -724,6 +1106,9 @@ window.WB_BUILD = '2026-09-28';
     el("recent").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("q-progress").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("q-list").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
+    el("heat").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
+    el("heat-tally").textContent = "—";
+    el("th-tally").textContent = "—";
     el("plan-list").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("donow").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("plan-tally").textContent = "—";
@@ -830,7 +1215,7 @@ window.WB_BUILD = '2026-09-28';
      machine is never silently clobbered.
      ========================================================== */
   var CFG = window.WB_CONFIG || {};
-  var FILES = ["objectives","questions","worklog","experiments","papers","opportunities","tasks"];
+  var FILES = ["objectives","questions","worklog","experiments","papers","opportunities","tasks","board"];
   var files = {};        // name -> {rows, sha}
   var token = null;
 
@@ -945,6 +1330,7 @@ window.WB_BUILD = '2026-09-28';
     papers      = files.papers.rows      || [];
     deadlines   = files.opportunities.rows || [];
     tasks = (files.tasks.rows || []).slice().sort(function(a,b){ return (a.n||0)-(b.n||0); });
+    board = files.board.rows || [];
     ready = {obj:true, work:true, exp:true, q:true, pp:true, dl:true, tk:true};
   }
 

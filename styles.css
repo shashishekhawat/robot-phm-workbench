@@ -328,3 +328,65 @@ code{font-family:var(--f-data);font-size:12.5px;background:var(--surface);
   padding:18px 0 5px;border-bottom:1px solid var(--line-soft)}
 .grouphead:first-child{padding-top:6px}
 .grouphead b{color:var(--ink)}
+
+/* ---- year heatmap ---- */
+.heat-wrap{overflow-x:auto;padding:14px 0 4px}
+.heat-legend{display:flex;align-items:center;gap:7px;justify-content:flex-end;
+  font-family:var(--f-data);font-size:9.5px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--muted);padding-top:6px}
+.heat-legend i{width:11px;height:11px;display:inline-block;border-radius:2px}
+#heat svg rect.cell{transition:transform .12s ease, stroke .12s ease;
+  transform-origin:center;transform-box:fill-box}
+#heat svg rect.cell:hover{stroke:var(--ink);stroke-width:1.2;transform:scale(1.45)}
+#heat svg text{fill:var(--muted);font-family:var(--f-data);font-size:9px;
+  letter-spacing:.04em;text-transform:uppercase}
+
+/* ---- threads board ---- */
+.board-wrap{overflow:auto;border:1px solid var(--line-soft);background:
+  radial-gradient(circle at 50% 0%, rgba(255,204,102,.035), transparent 60%), var(--bg);
+  margin-top:16px}
+.board{position:relative;min-height:520px}
+.threads{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.threads path{fill:none;stroke:var(--s-ok);stroke-width:1.2;
+  transition:stroke .18s ease, stroke-width .18s ease, opacity .18s ease}
+.threads path.lit{stroke:var(--accent);stroke-width:2.1}
+.threads path.dim{opacity:.12}
+.threads path.live{stroke:var(--s-stale);stroke-width:1.8;stroke-dasharray:5 4}
+.threads path.drawin{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);
+  animation:thread-draw .7s ease forwards}
+@keyframes thread-draw{to{stroke-dashoffset:0}}
+.nodes{position:absolute;inset:0}
+
+.nd{position:absolute;box-sizing:border-box;cursor:pointer;
+  transition:transform .14s cubic-bezier(.2,.8,.3,1), border-color .14s ease,
+             box-shadow .14s ease, opacity .18s ease;
+  will-change:transform}
+.nd.dim{opacity:.22}
+.nd:hover{border-color:var(--accent);
+  box-shadow:0 6px 20px rgba(0,0,0,.45), 0 0 0 1px var(--accent)}
+.nd.sel{border-color:var(--s-stale);box-shadow:0 0 0 1px var(--s-stale)}
+
+/* question chips */
+.nd.q{width:52px;height:30px;display:flex;align-items:center;justify-content:center;
+  background:var(--surface);border:1px solid var(--line);
+  font-family:var(--f-data);font-size:11px;font-weight:700;color:var(--ink-soft)}
+.nd.q.routed{color:var(--accent);border-color:#4a4327}
+.nd.q.closed{color:var(--good);border-color:#33402a}
+/* objective hubs */
+.nd.hub{width:150px;padding:11px 12px;background:var(--surface);
+  border:1px solid var(--rule);text-align:center}
+.nd.hub b{display:block;font-family:var(--f-data);font-size:12px;color:var(--accent)}
+.nd.hub span{font-size:11px;color:var(--muted);line-height:1.3}
+/* paper cards */
+.nd.pc{width:190px;padding:10px 11px;background:var(--surface);border:1px solid var(--line)}
+.nd.pc h4{margin:0 0 5px;font-size:12px;font-weight:600;line-height:1.35}
+.nd.pc .mt{font-family:var(--f-data);font-size:9px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--muted)}
+.nd.pin{width:160px;padding:10px 11px;background:#2a2417;border:1px solid var(--accent);
+  font-size:12px;line-height:1.4;color:var(--ink)}
+.clab{position:absolute;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-family:var(--f-data);font-size:9px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted);pointer-events:none}
+@media (prefers-reduced-motion:reduce){
+  .nd,.threads path{transition:none!important}
+  .threads path.drawin{animation:none;stroke-dashoffset:0}
+}

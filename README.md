@@ -24,8 +24,17 @@ needs (desk / robot / lab / external), an hour estimate and which of the 61 ques
 Filter by *needs* first: most days you are at a desk. A task whose prerequisite is unfinished is
 marked *waiting*. Click the status to move it along: backlog, next, doing, done.
 
+**Threads** — two boards. *Question routes* is derived, not drawn: a question joins an objective
+when a task in your plan says it closes that question and serves that objective, so **no route**
+marks questions no planned work touches. *Paper board* is yours to draw — switch to connect, click
+two cards, and the thread records what you think the relationship is. Dragging is local until you
+press Save layout, so a nudge is not a commit.
+
 **Field** — submission windows with an intent mark, and a literature feed with triage marks,
 refreshed daily by a GitHub Action in the data repository.
+
+The **Today** tab also carries a year heatmap: one cell per day, shaded by how much happened —
+log entries, experiments, tasks finished, questions closed — with hours in the tooltip.
 
 ## Setup
 

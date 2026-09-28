@@ -9,6 +9,7 @@
       <button class="tab" id="tab-log" role="tab" aria-selected="false" aria-controls="view-log">Log</button>
       <button class="tab" id="tab-q" role="tab" aria-selected="false" aria-controls="view-q">Questions</button>
       <button class="tab" id="tab-plan" role="tab" aria-selected="false" aria-controls="view-plan">Plan</button>
+      <button class="tab" id="tab-threads" role="tab" aria-selected="false" aria-controls="view-threads">Threads</button>
       <button class="tab" id="tab-field" role="tab" aria-selected="false" aria-controls="view-field">Field</button>
       <button class="tab" id="tab-set" role="tab" aria-selected="false" aria-controls="view-setup" hidden>Setup</button>
     </div>
@@ -30,6 +31,12 @@
       <span class="tally" id="now-tally">—</span>
     </div>
     <div id="donow"><div class="msg">Loading…</div></div>
+
+    <div class="panel-head">
+      <h2>The year</h2>
+      <span class="tally" id="heat-tally">—</span>
+    </div>
+    <div id="heat"><div class="msg">Loading…</div></div>
 
     <div class="panel-head">
       <h2>Days since each objective was touched</h2>
@@ -272,6 +279,50 @@
       <h3>How this is meant to be used</h3>
       <p>Filter by <b>what it needs</b> first. Most days you are at a desk, and nineteen of these need nothing else — staring at the robot tasks when you have no robot booked is how a queue becomes noise.</p>
       <p>A task marked <b>waiting</b> has an unfinished prerequisite. Click the status to move a task along: backlog, next, doing, done. Estimates will be wrong at first; recording the actual hours is how they stop being wrong.</p>
+    </div>
+  </section>
+
+
+  <!-- ================= THREADS ================= -->
+  <section id="view-threads" role="tabpanel" aria-labelledby="tab-threads" hidden>
+    <div class="panel-head">
+      <h2 id="th-head">Question routes</h2>
+      <span class="tally" id="th-tally">—</span>
+    </div>
+
+    <div class="filters">
+      <div class="chips" id="th-which" role="group" aria-label="Which board"></div>
+      <div class="chips" id="th-mode" role="group" aria-label="Mode" hidden></div>
+      <button type="button" class="btn ghost" id="th-note" hidden>Add note</button>
+      <button type="button" class="btn" id="th-save" hidden>Save layout</button>
+      <span class="said" id="th-said"></span>
+    </div>
+
+    <div class="board-wrap">
+      <div class="board" id="board">
+        <svg class="threads" id="threads"></svg>
+        <div class="nodes" id="nodes"></div>
+      </div>
+    </div>
+
+    <div id="th-detail" class="verdict-line" hidden></div>
+
+    <div class="note" id="th-note-q">
+      <h3>What the threads mean</h3>
+      <p>A question is joined to an objective when some task in your plan says it closes that
+      question and serves that objective. Nothing here is drawn by hand — it is derived from the
+      plan, so it changes as you schedule work.</p>
+      <p><b>No route</b> means no task in your plan touches that question. That is the useful
+      column: it is where the plan and the question bank disagree about what matters.</p>
+    </div>
+
+    <div class="note" id="th-note-p" hidden>
+      <h3>This one is yours to draw</h3>
+      <p>There is no citation graph in the data and I will not invent one, so the threads here are
+      the ones you pull. Switch to <b>connect</b>, click one card then another, and the link records
+      what you think the relationship is. Add notes as pins for conclusions that are not papers.</p>
+      <p>Dragging is local until you press <b>Save layout</b> — otherwise every nudge would be its
+      own commit in your repository.</p>
     </div>
   </section>
 
