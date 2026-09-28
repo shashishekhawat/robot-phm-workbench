@@ -26,8 +26,10 @@ marked *waiting*. Click the status to move it along: backlog, next, doing, done.
 
 **Threads** — two boards. *Question routes* is derived, not drawn: a question joins an objective
 when a task in your plan says it closes that question and serves that objective, so **no route**
-marks questions no planned work touches. *Paper board* is yours to draw, and holds more than
-papers: **claim** and **concept** nodes, each able to carry a LaTeX equation. A claim records what
+marks questions no planned work touches. *Paper board* draws from two sources: **my library** (`library.json` — the works you cite and
+own, including books, patents, reports and standards, each carrying its DC-1 reference number) and
+the **feed** (auto-refreshed arXiv/Crossref hits, shown dashed and dimmer). Filter between them.
+It holds more than references: **claim** and **concept** nodes, each able to carry a LaTeX equation. A claim records what
 evidence actually backs it — assumed, simulated, bench, validated, contradicted — which is the
 field the abstract never gives you.
 

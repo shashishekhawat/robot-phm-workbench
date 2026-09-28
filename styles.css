@@ -424,3 +424,9 @@ code{font-family:var(--f-data);font-size:12.5px;background:var(--surface);
   font-family:var(--f-data);font-size:9.5px;letter-spacing:.05em;
   text-transform:uppercase;color:var(--muted)}
 .legend-rel i{display:inline-block;width:16px;height:2px;margin-right:5px;vertical-align:middle}
+.nd.pc.kd-book{border-left:3px solid #D4BFFF}
+.nd.pc.kd-patent{border-left:3px solid #95E6CB}
+.nd.pc.kd-report{border-left:3px solid var(--muted)}
+.nd.pc.kd-article{border-left:3px solid var(--muted)}
+.nd.pc.kd-feed{opacity:.72;border-style:dashed}
+.nd.pc .mt.own{color:var(--accent)}

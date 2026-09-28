@@ -13,6 +13,8 @@ window.WB_BUILD = '2026-09-28';
   var dbRef = null;
   var tasks = [];
   var board = [];
+  var library = [];
+  var srcFilter = "all";
   var thWhich = "questions";
   var thMode = "move";
   var thLayout = "free";
@@ -790,6 +792,13 @@ window.WB_BUILD = '2026-09-28';
     var b = ev.target.closest(".chip"); if (!b) return;
     thWhich = b.getAttribute("data-v"); thSel = null; renderBoard();
   });
+  chipGroup(el("th-src"), [{value:"all",label:"all"},{value:"library",label:"my library"},
+                           {value:"feed",label:"feed"}], "all");
+  wireChips(el("th-src"));
+  el("th-src").addEventListener("click", function(ev){
+    var b = ev.target.closest(".chip"); if (!b) return;
+    srcFilter = b.getAttribute("data-v"); renderPaperBoard();
+  });
   chipGroup(el("th-layout"), [{value:"free",label:"free"},{value:"chrono",label:"chronology"},
                               {value:"logic",label:"logic"}], "free");
   wireChips(el("th-layout"));
@@ -964,7 +973,7 @@ window.WB_BUILD = '2026-09-28';
 
     el("th-head").textContent = "Question routes";
     el("th-tally").textContent = routed + " routed · " + noRoute + " with no route";
-    ["th-mode","th-layout","th-rel","th-add","th-auto","th-save"].forEach(function(i){ el(i).hidden = true; });
+    ["th-mode","th-layout","th-src","th-rel","th-add","th-auto","th-save"].forEach(function(i){ el(i).hidden = true; });
     el("th-note-q").hidden = false; el("th-note-p").hidden = true;
     el("nodes").innerHTML = html;
     var maxY = nodeBoxes.reduce(function(m,b){ return Math.max(m, b.y + b.h); }, 0);
@@ -1002,15 +1011,16 @@ window.WB_BUILD = '2026-09-28';
   /* every node on the board: papers from the feed plus your own */
   function boardNodes(){
     var doc = boardDoc(), pos = doc.positions || {}, out = [];
-    papers.forEach(function(p){
-      if (!pos[p.id] && ["reading","read","cited"].indexOf(p.triage) < 0) return;
-      out.push({id:p.id, type:"paper", text:p.title, date:p.posted,
-                meta:(p.arxivId || p.source || "") + " · " + (p.triage || "unread"),
-                tags:p.tags || [], w:190});
+    if (srcFilter !== "feed") library.forEach(function(r){
+      out.push({id:r.id, type:"paper", kind:r.kind || "paper", text:r.title, date:r.posted,
+                meta:(r.kind || "paper") + (r.n ? " · [" + r.n + "]" : "") +
+                     (r.venue ? " · " + String(r.venue).slice(0,26) : ""),
+                tags:r.tags || [], note:r.note, w:190});
     });
-    if (!out.length) papers.slice(0,8).forEach(function(p){
-      out.push({id:p.id, type:"paper", text:p.title, date:p.posted,
-                meta:(p.arxivId || p.source || ""), tags:p.tags || [], w:190});
+    if (srcFilter !== "library") papers.forEach(function(p){
+      if (!pos[p.id] && ["reading","read","cited"].indexOf(p.triage) < 0) return;
+      out.push({id:p.id, type:"paper", kind:"feed", text:p.title, date:p.posted,
+                meta:"feed · " + (p.triage || "unread"), tags:p.tags || [], w:190});
     });
     (doc.nodes || []).forEach(function(n){
       out.push({id:n.id, type:n.type || "note", text:n.text, date:n.date,
@@ -1053,7 +1063,7 @@ window.WB_BUILD = '2026-09-28';
     years.sort(function(p,q){ return p - q; });
     var slot = {}; years.forEach(function(Y,i){ slot[Y] = i; });
 
-    var PX = 268, LEFT = 96, deco = "", top = 34;
+    var PX = years.length > 10 ? 200 : 268, LEFT = 96, deco = "", top = 34;
     ["paper","claim","concept","note"].forEach(function(L){
       var list = ns.filter(function(n){ return (n.type || "note") === L; });
       if (!list.length) return;
@@ -1142,13 +1152,14 @@ window.WB_BUILD = '2026-09-28';
 
     var html = lay.deco || "";
     ns.forEach(function(n){
-      var cls = n.type === "paper" ? "nd pc"
+      var cls = n.type === "paper" ? ("nd pc kd-" + (n.kind || "paper"))
               : n.type === "claim" ? "nd cl ev-" + (n.status || "assumed")
               : n.type === "concept" ? "nd cn" : "nd pin";
       var body;
       if (n.type === "paper"){
         body = '<h4>' + esc(String(n.text).slice(0,78)) + (String(n.text).length > 78 ? "…" : "") +
-               '</h4><div class="mt">' + esc(n.meta || "") + (n.date ? " · " + esc(n.date) : "") + '</div>';
+               '</h4><div class="mt">' + esc(n.meta || "") + (n.date ? " · " + esc(n.date) : "") +
+               (n.note ? '</div><div class="mt own">' + esc(n.note) : "") + '</div>';
       } else {
         body = '<div class="txt">' + esc(n.text) + '</div>' + tex(n.latex) +
                (n.type === "claim" ? '<span class="ev">' + esc(n.status || "assumed") +
@@ -1163,7 +1174,7 @@ window.WB_BUILD = '2026-09-28';
       (edgeList.filter(function(e){ return e.auto; }).length ? " (" +
         edgeList.filter(function(e){ return e.auto; }).length + " suggested)" : "") +
       (thDirty ? " · unsaved" : "");
-    ["th-mode","th-layout","th-rel","th-add","th-auto","th-save"].forEach(function(i){ el(i).hidden = false; });
+    ["th-mode","th-layout","th-src","th-rel","th-add","th-auto","th-save"].forEach(function(i){ el(i).hidden = false; });
     el("th-mode").hidden = thLayout !== "free";
     el("th-note-q").hidden = true; el("th-note-p").hidden = false;
     el("nodes").innerHTML = html;
@@ -1438,7 +1449,7 @@ window.WB_BUILD = '2026-09-28';
      machine is never silently clobbered.
      ========================================================== */
   var CFG = window.WB_CONFIG || {};
-  var FILES = ["objectives","questions","worklog","experiments","papers","opportunities","tasks","board"];
+  var FILES = ["objectives","questions","worklog","experiments","papers","opportunities","tasks","board","library"];
   var files = {};        // name -> {rows, sha}
   var token = null;
 
@@ -1554,6 +1565,7 @@ window.WB_BUILD = '2026-09-28';
     deadlines   = files.opportunities.rows || [];
     tasks = (files.tasks.rows || []).slice().sort(function(a,b){ return (a.n||0)-(b.n||0); });
     board = files.board.rows || [];
+    library = files.library.rows || [];
     ready = {obj:true, work:true, exp:true, q:true, pp:true, dl:true, tk:true};
   }
 
