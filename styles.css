@@ -556,8 +556,9 @@ body.insp-open .board-wrap{margin-right:min(436px,92vw)}
   display:flex;align-items:center;justify-content:center;
   min-height:70px;overflow:hidden;
 }
-.board[data-lod="tag"] .pcid{display:block;font-size:min(calc(10px / var(--z,1)),29px)}
-.board[data-lod="dot"] .pcid{display:block;font-size:min(calc(12px / var(--z,1)),58px)}
+.board[data-lod="tag"] .pcid{display:block;font-size:min(calc(10px / var(--z,1)),42px)}
+.board[data-lod="tag"] .pcid i{font-size:.8em}
+.board[data-lod="dot"] .pcid{display:block;font-size:min(calc(12px / var(--z,1)),100px)}
 .board[data-lod="dot"] .pcid i{display:none}   /* the number alone at this range */
 
 /* hover is how you read a card you cannot read: it lifts clear of its
@@ -570,16 +571,16 @@ body.insp-open .board-wrap{margin-right:min(436px,92vw)}
 /* claims and concepts follow the same rule */
 .board[data-lod="tag"] .nd.cl .txt, .board[data-lod="tag"] .nd.cn,
 .board[data-lod="dot"] .nd.cl .txt, .board[data-lod="dot"] .nd.cn{
-  font-size:min(calc(9px / var(--z,1)),26px);
+  font-size:min(calc(9px / var(--z,1)),40px);
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden
 }
 .board[data-lod="tag"] .nd.cl .ev, .board[data-lod="dot"] .nd.cl .ev,
 .board[data-lod="tag"] .nd.cl .eq, .board[data-lod="dot"] .nd.cl .eq{display:none}
 
 .board[data-lod="tag"] .lanelab, .board[data-lod="mid"] .lanelab,
-.board[data-lod="dot"] .lanelab{font-size:min(calc(9px / var(--z,1)),24px)}
+.board[data-lod="dot"] .lanelab{font-size:min(calc(9px / var(--z,1)),75px)}
 .board[data-lod="tag"] .axis span, .board[data-lod="dot"] .axis span{
-  font-size:min(calc(9px / var(--z,1)),24px)}
+  font-size:min(calc(9px / var(--z,1)),75px)}
 
 /* strings hold their weight on screen rather than thinning to nothing */
 .board[data-lod="mid"] .threads path{stroke-width:calc(1.7px / var(--z,1))}
