@@ -590,3 +590,18 @@ body.insp-open .board-wrap{margin-right:min(436px,92vw)}
 .board[data-lod="dot"] .threads .shade{stroke-width:calc(3.4px / var(--z,1))}
 .board[data-lod="dot"] .threads .pin-h{r:calc(4.6px / var(--z,1))}
 .board[data-lod="dot"] .threads .pin-g{display:none}
+
+/* ---- task check box and undo toast ---- */
+.tk-s{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.tk-chk{width:22px;height:22px;padding:0;border:1.5px solid var(--rule);border-radius:4px;
+  background:none;color:var(--accent-ink);font-size:14px;line-height:1;cursor:pointer}
+.tk-chk:hover{border-color:var(--good)}
+.tk-chk[aria-checked="true"]{background:var(--good);border-color:var(--good)}
+.tk.st-done .tk-t{color:var(--muted);text-decoration:line-through}
+.undo-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;
+  display:flex;align-items:center;gap:16px;max-width:min(560px,92vw);
+  padding:10px 14px;background:var(--surface);border:1px solid var(--rule);border-radius:4px;
+  box-shadow:0 8px 28px rgba(0,0,0,.5);font-size:13px}
+.undo-toast span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.undo-toast button{background:none;border:0;color:var(--accent);font-family:var(--f-data);
+  font-size:11px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;padding:2px 4px}

@@ -614,7 +614,11 @@ window.WB_BUILD = '2026-09-28';
         '<span class="said" id="tk-said"></span></div></div>' : "";
     return '<article class="tk st-' + esc(st) + (wait.length && st !== "done" ? " waiting" : "") + '">' +
       '<div class="stripe"></div>' +
-      '<div class="tk-s"><button type="button" data-tk="flow" data-id="' + esc(t.id) +
+      '<div class="tk-s"><button type="button" class="tk-chk" data-tk="check" data-id="' + esc(t.id) +
+        '" role="checkbox" aria-checked="' + (st === "done") + '" aria-label="' +
+        (st === "done" ? "Done. Click to reopen" : "Mark done") + '" title="' +
+        (st === "done" ? "Reopen this task" : "Mark done") + '">' + (st === "done" ? "\u2713" : "") + '</button>' +
+        '<button type="button" data-tk="flow" data-id="' + esc(t.id) +
         '" title="Move to ' + esc(next) + '">' + esc(st) + '</button></div>' +
       '<div class="tk-b">' +
         '<p class="tk-t" data-tk="open" data-id="' + esc(t.id) + '">' + esc(t.title) + '</p>' +
@@ -659,21 +663,65 @@ window.WB_BUILD = '2026-09-28';
     }).join("");
   }
 
+  /* Every status change can be taken back. The toast holds the values the
+     task had before, so Undo restores them exactly rather than guessing. */
+  var undoTimer = null;
+  function changeTask(t, patch, label, fail){
+    var before = {status: t.status || "backlog", startedOn: t.startedOn || "",
+                  doneOn: t.doneOn || "", prevStatus: t.prevStatus || ""};
+    var id = t.id, title = t.title;
+    dbRef.collection("tasks").doc(id).update(patch).then(function(){
+      showUndo(label + " \u00b7 " + title, function(){
+        return dbRef.collection("tasks").doc(id).update(before);
+      });
+    })["catch"](function(){ if (fail) fail(); });
+  }
+  function showUndo(text, undo){
+    var box = el("undo-toast");
+    if (!box){
+      box = document.createElement("div"); box.id = "undo-toast"; box.className = "undo-toast";
+      box.setAttribute("role", "status"); document.body.appendChild(box);
+    }
+    box.innerHTML = '<span></span><button type="button">Undo</button>';
+    box.firstChild.textContent = text;
+    box.hidden = false;
+    var btn = box.lastChild;
+    btn.onclick = function(){
+      btn.disabled = true;
+      Promise.resolve(undo()).then(function(){ box.hidden = true; })
+        ["catch"](function(){ btn.disabled = false; btn.textContent = "Failed, retry"; });
+    };
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(function(){ box.hidden = true; }, 10000);
+  }
+
   function taskClicks(ev){
     var b = ev.target.closest("[data-tk]");
     if (!b || !dbRef) return;
     var act = b.getAttribute("data-tk"), id = b.getAttribute("data-id"), t = byId(id);
     if (!t) return;
     if (act === "open"){ tkOpenId = (tkOpenId === id) ? null : id; renderPlan(); return; }
+    if (act === "check"){
+      var was = t.status || "backlog", p2;
+      if (was === "done"){
+        p2 = {status: t.prevStatus || "next", doneOn: ""};
+      } else {
+        p2 = {status: "done", doneOn: todayISO(), prevStatus: was};
+        if (!t.startedOn) p2.startedOn = todayISO();
+      }
+      b.disabled = true;
+      changeTask(t, p2, was === "done" ? "Reopened" : "Marked done", function(){ b.disabled = false; });
+      return;
+    }
     if (act === "flow"){
       var st = t.status || "backlog";
       var nx = st === "blocked" ? "next" : FLOW[(FLOW.indexOf(st) + 1) % FLOW.length];
       var patch = {status: nx};
       if (nx === "doing" && !t.startedOn) patch.startedOn = todayISO();
-      if (nx === "done") patch.doneOn = todayISO();
+      if (nx === "done"){ patch.doneOn = todayISO(); patch.prevStatus = st; }
       if (nx === "backlog"){ patch.startedOn = ""; patch.doneOn = ""; }
       b.disabled = true;
-      dbRef.collection("tasks").doc(id).update(patch)["catch"](function(){ b.disabled = false; });
+      changeTask(t, patch, "Moved to " + nx, function(){ b.disabled = false; });
       return;
     }
     if (act === "block"){
