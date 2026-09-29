@@ -21,8 +21,12 @@
   }
   /* Deliberately single-theme: Ayu Mirage, as requested. */
 
-  [hidden]{display:none !important}
   *{box-sizing:border-box}
+  /* The UA rule for [hidden] is display:none, which any author display
+     declaration silently beats — so a flex container with the hidden
+     attribute stays on screen. Everything here toggles visibility through
+     .hidden, so this has to win. */
+  [hidden]{display:none !important}
   body{
     background:var(--bg);
     color:var(--ink);
@@ -343,14 +347,21 @@ code{font-family:var(--f-data);font-size:12.5px;background:var(--surface);
   letter-spacing:.04em;text-transform:uppercase}
 
 /* ---- threads board ---- */
-.board-wrap{overflow:auto;border:1px solid var(--line-soft);background:
+.board-wrap{position:relative;overflow:auto;border:1px solid var(--line-soft);background:
   radial-gradient(circle at 50% 0%, rgba(255,204,102,.035), transparent 60%), var(--bg);
   margin-top:16px}
 .board{position:relative;min-height:520px}
 .threads{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
-.threads path{fill:none;stroke:var(--s-ok);stroke-width:1.2;pointer-events:stroke;cursor:pointer;
+.threads path{fill:none;stroke:#B98C42;stroke-width:1.7;pointer-events:stroke;cursor:pointer;
+  stroke-linecap:round;
   transition:stroke .18s ease, stroke-width .18s ease, opacity .18s ease}
-.threads path.lit{stroke:var(--accent);stroke-width:2.1}
+/* the shadow the string casts, and the pin it hangs from */
+.threads .shade{fill:none;stroke:rgba(0,0,0,.5);stroke-width:3.4;stroke-linecap:round;
+  pointer-events:none;transform:translate(1px,2px)}
+.threads .pins{pointer-events:none}
+.threads .pin-h{fill:var(--accent);stroke:rgba(0,0,0,.55);stroke-width:1}
+.threads .pin-g{fill:rgba(255,255,255,.6)}
+.threads path.lit{stroke:var(--accent);stroke-width:2.6}
 .threads path.dim{opacity:.12}
 .threads path.live{stroke:var(--s-stale);stroke-width:1.8;stroke-dasharray:5 4;pointer-events:none}
 .threads path.drawin{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);
@@ -484,3 +495,97 @@ body.insp-open .board-wrap{margin-right:min(436px,92vw)}
 .insp-chl{font-size:12px;line-height:1.45;color:var(--ink-soft);text-decoration:none;
   padding:2px 4px;border-radius:2px}
 .insp-chl:hover{color:var(--accent);background:var(--surface)}
+
+/* ---- the face of a document: its own title page, pinned ---- */
+.nd.pc{transform:rotate(var(--tilt,0deg))}
+.pcf{
+  position:relative;width:100%;height:160px;margin:0 0 8px;overflow:hidden;
+  background:var(--bg);border:1px solid var(--line-soft);
+  display:flex;align-items:center;justify-content:center;
+}
+.pcf img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block}
+.pcf.empty img{display:none}
+/* no thumbnail: say which kind it is rather than showing a broken frame */
+.pcf.empty::after{
+  content:attr(data-fb);
+  font-family:var(--f-data);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faint);
+}
+.pcf.empty{background:
+  repeating-linear-gradient(135deg,transparent 0 6px,rgba(255,255,255,.022) 6px 12px),var(--bg)}
+/* the page fades into the card so the text below reads as a caption */
+.pcf::before{
+  content:"";position:absolute;inset:auto 0 0 0;height:34px;pointer-events:none;
+  background:linear-gradient(transparent,rgba(36,41,54,.92));
+}
+.nd.pc.kd-feed .pcf{filter:grayscale(.45)}
+
+/* ---- zoom ----
+   The board scales; a sizer box carries the scaled dimensions so the scrollbars
+   still describe the real extent. */
+.zsize{position:relative}
+.board{transform:scale(var(--z,1));transform-origin:0 0}
+.zoomer{
+  position:sticky;bottom:10px;left:100%;float:right;z-index:6;
+  display:inline-flex;gap:1px;margin:0 10px -34px 0;
+  background:var(--surface);border:1px solid var(--rule);border-radius:4px;
+  box-shadow:0 4px 16px rgba(0,0,0,.4);overflow:hidden;
+}
+.zoomer button{
+  background:none;border:0;color:var(--ink-soft);cursor:pointer;
+  font-family:var(--f-data);font-size:11px;padding:6px 10px;min-width:34px;
+}
+.zoomer button:hover{background:var(--bg);color:var(--accent)}
+#z-pct{min-width:52px;color:var(--muted)}
+
+/* ---- level of detail: what survives as the board shrinks ---- */
+.pcid{display:none;font-family:var(--f-data);letter-spacing:.03em;
+  color:var(--ink-soft);text-align:center;line-height:1.3;
+  max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcid b{color:var(--accent)}
+.pcid i{font-style:normal;margin-left:5px}
+
+.board[data-lod="mid"] .nd.pc .mt{display:none}
+
+/* tag and dot: the card is a marker, and its content is held near a constant
+   size on screen — capped, so a label can never outgrow the card it names */
+.board[data-lod="tag"] .nd.pc .pcf,  .board[data-lod="dot"] .nd.pc .pcf,
+.board[data-lod="tag"] .nd.pc h4,    .board[data-lod="dot"] .nd.pc h4,
+.board[data-lod="tag"] .nd.pc .mt,   .board[data-lod="dot"] .nd.pc .mt{display:none}
+.board[data-lod="tag"] .nd.pc, .board[data-lod="dot"] .nd.pc{
+  display:flex;align-items:center;justify-content:center;
+  min-height:70px;overflow:hidden;
+}
+.board[data-lod="tag"] .pcid{display:block;font-size:min(calc(10px / var(--z,1)),29px)}
+.board[data-lod="dot"] .pcid{display:block;font-size:min(calc(12px / var(--z,1)),58px)}
+.board[data-lod="dot"] .pcid i{display:none}   /* the number alone at this range */
+
+/* hover is how you read a card you cannot read: it lifts clear of its
+   neighbours and shows the whole label */
+.board[data-lod="tag"] .nd.pc:hover, .board[data-lod="dot"] .nd.pc:hover{
+  overflow:visible;z-index:9;background:var(--surface)
+}
+.board[data-lod="dot"] .nd.pc:hover .pcid i{display:inline;font-size:.5em}
+
+/* claims and concepts follow the same rule */
+.board[data-lod="tag"] .nd.cl .txt, .board[data-lod="tag"] .nd.cn,
+.board[data-lod="dot"] .nd.cl .txt, .board[data-lod="dot"] .nd.cn{
+  font-size:min(calc(9px / var(--z,1)),26px);
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden
+}
+.board[data-lod="tag"] .nd.cl .ev, .board[data-lod="dot"] .nd.cl .ev,
+.board[data-lod="tag"] .nd.cl .eq, .board[data-lod="dot"] .nd.cl .eq{display:none}
+
+.board[data-lod="tag"] .lanelab, .board[data-lod="mid"] .lanelab,
+.board[data-lod="dot"] .lanelab{font-size:min(calc(9px / var(--z,1)),24px)}
+.board[data-lod="tag"] .axis span, .board[data-lod="dot"] .axis span{
+  font-size:min(calc(9px / var(--z,1)),24px)}
+
+/* strings hold their weight on screen rather than thinning to nothing */
+.board[data-lod="mid"] .threads path{stroke-width:calc(1.7px / var(--z,1))}
+.board[data-lod="tag"] .threads path,
+.board[data-lod="dot"] .threads path{stroke-width:calc(1.9px / var(--z,1))}
+.board[data-lod="tag"] .threads .shade,
+.board[data-lod="dot"] .threads .shade{stroke-width:calc(3.4px / var(--z,1))}
+.board[data-lod="dot"] .threads .pin-h{r:calc(4.6px / var(--z,1))}
+.board[data-lod="dot"] .threads .pin-g{display:none}

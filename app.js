@@ -802,6 +802,14 @@ window.WB_BUILD = '2026-09-28';
   chipGroup(el("th-layout"), [{value:"free",label:"free"},{value:"chrono",label:"chronology"},
                               {value:"logic",label:"logic"}], "free");
   wireChips(el("th-layout"));
+  chipGroup(el("th-face"), [{value:"faces",label:"faces"},{value:"text",label:"text only"}], "faces");
+  el("th-face").addEventListener("click", function(ev){
+    var b = ev.target.closest("button"); if (!b) return;
+    showFaces = b.getAttribute("data-v") === "faces";
+    chipGroup(el("th-face"), [{value:"faces",label:"faces"},{value:"text",label:"text only"}],
+              showFaces ? "faces" : "text");
+    renderPaperBoard();
+  });
   el("th-layout").addEventListener("click", function(ev){
     var b = ev.target.closest(".chip"); if (!b) return;
     thLayout = b.getAttribute("data-v"); thSel = null; renderPaperBoard();
@@ -827,10 +835,15 @@ window.WB_BUILD = '2026-09-28';
 
   var nodeBoxes = [];   // {id, x, y, w, h}
 
+  /* string is pinned at the top of a card and sags between — the sag grows
+     with the span, which is what makes a long thread read as a long thread */
+  function pinAt(b){ return {x: b.x + b.w/2, y: b.y + 11}; }
   function curve(a, b, sag){
-    var x1 = a.x + a.w/2, y1 = a.y + a.h/2, x2 = b.x + b.w/2, y2 = b.y + b.h/2;
-    var mx = (x1+x2)/2, my = (y1+y2)/2 + (sag == null ? 26 : sag);
-    return "M" + x1 + "," + y1 + " Q" + mx + "," + my + " " + x2 + "," + y2;
+    var p = pinAt(a), q = pinAt(b);
+    var dx = q.x - p.x, dy = q.y - p.y, d = Math.sqrt(dx*dx + dy*dy);
+    var s = (sag == null) ? Math.min(120, 22 + d * 0.17) : sag;
+    return "M" + p.x + "," + p.y + " Q" + ((p.x+q.x)/2) + "," + ((p.y+q.y)/2 + s) +
+           " " + q.x + "," + q.y;
   }
 
   function measureNodes(){
@@ -843,17 +856,30 @@ window.WB_BUILD = '2026-09-28';
 
   var edgeList = [];    // {from, to, kind}
   function paintThreads(first){
-    var svg = el("threads"), out = "";
+    var svg = el("threads"), out = "", shade = "", pinned = {};
     edgeList.forEach(function(e, i){
       var a = boxOf(e.from), b = boxOf(e.to);
       if (!a || !b) return;
+      var d = curve(a, b);
       var cl = [relClass(e.kind)];
       if (e.auto) cl.push("auto");
       if (first) cl.push("drawin");
-      out += '<path d="' + curve(a,b) + '" data-e="' + i + '" class="' +
+      /* the darker copy a hair below is what makes it read as string rather
+         than a drawn line — it is the shadow the thread casts on the board */
+      shade += '<path d="' + d + '" class="shade"></path>';
+      out += '<path d="' + d + '" data-e="' + i + '" class="' +
              cl.join(" ").trim() + '"></path>';
+      pinned[e.from] = 1; pinned[e.to] = 1;
     });
-    svg.innerHTML = out;
+    var heads = "";
+    Object.keys(pinned).forEach(function(id){
+      var b = boxOf(id); if (!b) return;
+      var p = pinAt(b);
+      heads += '<circle class="pin-h" cx="' + p.x + '" cy="' + p.y + '" r="4.6"></circle>' +
+               '<circle class="pin-g" cx="' + (p.x - 1.4) + '" cy="' + (p.y - 1.4) + '" r="1.5"></circle>';
+    });
+    svg.innerHTML = '<g class="shades">' + shade + '</g>' + out +
+                    '<g class="pins">' + heads + '</g>';
     if (first) requestAnimationFrame(function(){
       svg.querySelectorAll("path.drawin").forEach(function(p){
         try { p.style.setProperty("--len", p.getTotalLength()); } catch(e){}
@@ -890,8 +916,7 @@ window.WB_BUILD = '2026-09-28';
   /* --- magnetic cursor --- */
   var magRaf = null, magPt = null;
   function magnet(ev){
-    var r = el("board").getBoundingClientRect();
-    magPt = {x: ev.clientX - r.left, y: ev.clientY - r.top};
+    magPt = boardPt(ev);
     if (magRaf) return;
     magRaf = requestAnimationFrame(function(){
       magRaf = null;
@@ -900,15 +925,17 @@ window.WB_BUILD = '2026-09-28';
         var b = boxOf(n.getAttribute("data-id")); if (!b) return;
         var dx = magPt.x - (b.x + b.w/2), dy = magPt.y - (b.y + b.h/2);
         var d = Math.hypot(dx, dy);
-        if (d > 130 || d < 1){ n.style.transform = ""; return; }
-        var k = (1 - d/130) * 7;
-        n.style.transform = "translate(" + (dx/d*k).toFixed(2) + "px," + (dy/d*k).toFixed(2) + "px)";
+        var reach = 130 / Z;
+        if (d > reach || d < 1){ n.style.transform = ""; return; }
+        var k = (1 - d/reach) * 7 / Z;
+        n.style.transform = "translate(" + (dx/d*k).toFixed(2) + "px," +
+                            (dy/d*k).toFixed(2) + "px) rotate(var(--tilt,0deg))";
       });
       if (thMode === "connect" && thSel){
         var a = boxOf(thSel);
         if (a) el("threads").insertAdjacentHTML("beforeend",
-          '<path class="live" d="M' + (a.x+a.w/2) + ',' + (a.y+a.h/2) +
-          ' Q' + ((a.x+a.w/2+magPt.x)/2) + ',' + ((a.y+a.h/2+magPt.y)/2 + 20) +
+          '<path class="live" d="M' + pinAt(a).x + ',' + pinAt(a).y +
+          ' Q' + ((pinAt(a).x+magPt.x)/2) + ',' + ((pinAt(a).y+magPt.y)/2 + 26) +
           ' ' + magPt.x + ',' + magPt.y + '"></path>');
       }
     });
@@ -973,18 +1000,92 @@ window.WB_BUILD = '2026-09-28';
 
     el("th-head").textContent = "Question routes";
     el("th-tally").textContent = routed + " routed · " + noRoute + " with no route";
-    ["th-mode","th-layout","th-src","th-rel","th-add","th-auto","th-save"].forEach(function(i){ el(i).hidden = true; });
+    ["th-mode","th-layout","th-src","th-face","th-rel","th-add","th-auto","th-save"]
+      .forEach(function(i){ el(i).hidden = true; });
     el("th-note-q").hidden = false; el("th-note-p").hidden = true;
     el("nodes").innerHTML = html;
     var maxY = nodeBoxes.reduce(function(m,b){ return Math.max(m, b.y + b.h); }, 0);
     el("board").style.width = W + "px";
     el("board").style.height = (maxY + 40) + "px";
+    applyZoom();
     measureNodes(); paintThreads(true);
+  }
+
+  /* ---------------- document faces ----------------
+     A card with the paper's own title page on it is recognisable at a glance
+     in a way a truncated title never is. Thumbnails live in the private data
+     repo, so they come through the API like everything else: fetched only
+     when a card scrolls into view, then cached in the browser. */
+  var showFaces = true;
+  var THUMB = {};                    // id -> data URL, or "" for known-missing
+  var TH_KEY = "wb.th.";
+  function faceLift(){ return showFaces ? 200 : 0; }   // extra row height per card
+
+  function thumbUrl(id){
+    return "https://api.github.com/repos/" + CFG.owner + "/" + CFG.repo +
+           "/contents/" + (CFG.dir || "data") + "/thumbs/" + encodeURIComponent(id) + ".jpg";
+  }
+  function thumbCached(id){
+    if (THUMB[id] !== undefined) return THUMB[id];
+    try {
+      var v = localStorage.getItem(TH_KEY + id);
+      if (v !== null){ THUMB[id] = v; return v; }
+    } catch (e){}                     // private window, blocked storage — no matter
+    return undefined;
+  }
+  function fetchThumb(id){
+    if (!token) return Promise.resolve("");
+    return fetch(thumbUrl(id), {headers: headers()}).then(function(r){
+      if (!r.ok) return "";           // 404 simply means no face for this one
+      return r.json().then(function(j){
+        var b64 = String(j.content || "").replace(/\s/g, "");
+        return b64 ? "data:image/jpeg;base64," + b64 : "";
+      });
+    })["catch"](function(){ return ""; });
+  }
+  function showFace(box, v){
+    var img = box.querySelector("img"); if (!img) return;
+    if (v){ img.src = v; box.classList.remove("empty"); }
+    else box.classList.add("empty");
+  }
+  function paintFace(box){
+    var img = box.querySelector("img"); if (!img) return;
+    var id = img.getAttribute("data-thumb"), c = thumbCached(id);
+    if (c !== undefined) return showFace(box, c);
+    if (box.getAttribute("data-busy")) return;
+    box.setAttribute("data-busy", "1");
+    fetchThumb(id).then(function(v){
+      /* a miss is remembered for the session only, so a face added later
+         still turns up on the next reload */
+      if (v){ try { localStorage.setItem(TH_KEY + id, v); } catch (e){} }
+      THUMB[id] = v;
+      showFace(box, v);
+    });
+  }
+  var faceObs = ("IntersectionObserver" in window)
+    ? new IntersectionObserver(function(entries){
+        entries.forEach(function(en){
+          if (!en.isIntersecting) return;
+          faceObs.unobserve(en.target); paintFace(en.target);
+        });
+      }, {rootMargin: "240px"})
+    : null;
+  function armFaces(){
+    el("nodes").querySelectorAll(".pcf").forEach(function(box){
+      if (faceObs) faceObs.observe(box); else paintFace(box);
+    });
+  }
+  /* a fixed, tiny tilt per card — the same every render, so the board has the
+     look of things pinned by hand rather than laid out by a machine */
+  function tiltOf(id){
+    var h = 0, s = String(id);
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0x7fffffff;
+    return ((h % 241) / 100 - 1.2).toFixed(2) + "deg";
   }
 
   /* ---------------- paper board ---------------- */
   var RELS = [
-    {v:"builds on",   k:"",             c:"#FFCC66"},
+    {v:"builds on",   k:"",             c:"#B98C42"},
     {v:"contradicts", k:"k-contradicts",c:"#F28779"},
     {v:"supports",    k:"k-supports",   c:"#BAE67E"},
     {v:"same method", k:"k-same",       c:"#73D0FF"},
@@ -1008,11 +1109,23 @@ window.WB_BUILD = '2026-09-28';
     return +m[1] + (m[2] ? (+m[2] - 1) / 12 : 0.5);
   }
 
+  /* First author and year — what you would say out loud to name a paper.
+     This is what stays on a card once it is too small to read a title. */
+  function shortTag(r){
+    var who = String(r.authors || "").split(/,| and /)[0].trim();
+    var bits = who.replace(/\.$/, "").split(/\s+/).filter(Boolean);
+    var surname = bits.length ? bits[bits.length - 1] : "";
+    if (!surname || surname.length < 3) surname = String(r.title || "").split(/\s+/)[0] || "?";
+    var yr = (String(r.posted || "").match(/\d{4}/) || [""])[0];
+    return {n: r.n || null, who: surname.slice(0, 14), yr: yr};
+  }
+
   /* every node on the board: papers from the feed plus your own */
   function boardNodes(){
     var doc = boardDoc(), pos = doc.positions || {}, out = [];
     if (srcFilter !== "feed") library.forEach(function(r){
       out.push({id:r.id, type:"paper", kind:r.kind || "paper", text:r.title, date:r.posted,
+                tag:shortTag(r),
                 meta:(r.kind || "paper") + (r.n ? " · [" + r.n + "]" : "") +
                      (r.venue ? " · " + String(r.venue).slice(0,26) : ""),
                 tags:r.tags || [], note:r.note, w:190});
@@ -1020,6 +1133,7 @@ window.WB_BUILD = '2026-09-28';
     if (srcFilter !== "library") papers.forEach(function(p){
       if (!pos[p.id] && ["reading","read","cited"].indexOf(p.triage) < 0) return;
       out.push({id:p.id, type:"paper", kind:"feed", text:p.title, date:p.posted,
+                tag:shortTag(p),
                 meta:"feed · " + (p.triage || "unread"), tags:p.tags || [], w:190});
     });
     (doc.nodes || []).forEach(function(n){
@@ -1040,14 +1154,15 @@ window.WB_BUILD = '2026-09-28';
     });
     function free(x, y, w){
       return !placed.some(function(m){
+        var vh = 130 + faceLift();
         return x < m.x + m.w + 10 && m.x < x + w + 10 &&
-               y < m.y + 130 && m.y < y + 130;
+               y < m.y + vh && m.y < y + vh;
       });
     }
     ns.forEach(function(n){
       if (pos[n.id]) return;
       var x, y;
-      do { x = 30 + (i % 6) * 215; y = 30 + Math.floor(i / 6) * 150; i++; }
+      do { x = 30 + (i % 6) * 215; y = 30 + Math.floor(i / 6) * (150 + faceLift()); i++; }
       while (!free(x, y, n.w) && i < 4000);
       n.x = x; n.y = y; placed.push(n);
     });
@@ -1089,7 +1204,7 @@ window.WB_BUILD = '2026-09-28';
       });
       list.sort(function(p,q){ return p.x - q.x; });
       deco += '<div class="lanelab" style="left:6px;top:' + top + 'px">' + L + '</div>';
-      top += packRows(list, top, L === "paper" ? 96 : 84) + 26;
+      top += packRows(list, top, L === "paper" ? 96 + faceLift() : 84) + 26;
     });
 
     years.forEach(function(Y, i){
@@ -1125,7 +1240,8 @@ window.WB_BUILD = '2026-09-28';
       row.forEach(function(n, i){ n.x = 100 + i * (n.w + 26); });
       deco += '<div class="lanelab" style="left:6px;top:' + top + 'px">' +
               (L === 0 ? "rests on nothing" : "level " + L) + '</div>';
-      var h = packRows(row, top, 100);
+      var h = packRows(row, top, 100 + (row.some(function(n){ return n.type === "paper"; })
+                                          ? faceLift() : 0));
       W = Math.max(W, row.reduce(function(m,n){ return Math.max(m, n.x + n.w); }, 0) + 60);
       top += h + 30;
     }
@@ -1172,7 +1288,15 @@ window.WB_BUILD = '2026-09-28';
               : n.type === "concept" ? "nd cn" : "nd pin";
       var body;
       if (n.type === "paper"){
-        body = '<h4>' + esc(String(n.text).slice(0,78)) + (String(n.text).length > 78 ? "…" : "") +
+        body = (showFaces
+          ? '<div class="pcf" data-fb="' + esc(n.kind || "paper") + '">' +
+            '<img data-thumb="' + esc(n.id) + '" alt=""></div>'
+          : "") +
+               (n.tag ? '<span class="pcid">' +
+                        '<b>' + (n.tag.n ? esc(n.tag.n) : esc(n.tag.who.slice(0,3))) + '</b>' +
+                        '<i>' + esc(n.tag.who) + (n.tag.yr ? " " + esc(n.tag.yr) : "") + '</i>' +
+                        '</span>' : "") +
+               '<h4>' + esc(String(n.text).slice(0,78)) + (String(n.text).length > 78 ? "…" : "") +
                '</h4><div class="mt">' + esc(n.meta || "") + (n.date ? " · " + esc(n.date) : "") +
                (n.note ? '</div><div class="mt own">' + esc(n.note) : "") + '</div>';
       } else {
@@ -1181,7 +1305,8 @@ window.WB_BUILD = '2026-09-28';
                  (n.date ? " · " + esc(n.date) : "") + '</span>' : "");
       }
       html += '<div class="' + cls + '" data-id="' + esc(n.id) + '" data-kind="' + esc(n.type) +
-              '" style="left:' + n.x + 'px;top:' + n.y + 'px">' + body + '</div>';
+              '" style="left:' + n.x + 'px;top:' + n.y + 'px;--tilt:' + tiltOf(n.id) + '">' +
+              body + '</div>';
     });
 
     el("th-head").textContent = "Paper board";
@@ -1189,7 +1314,8 @@ window.WB_BUILD = '2026-09-28';
       (edgeList.filter(function(e){ return e.auto; }).length ? " (" +
         edgeList.filter(function(e){ return e.auto; }).length + " suggested)" : "") +
       (thDirty ? " · unsaved" : "");
-    ["th-mode","th-layout","th-src","th-rel","th-add","th-auto","th-save"].forEach(function(i){ el(i).hidden = false; });
+    ["th-mode","th-layout","th-src","th-face","th-rel","th-add","th-auto","th-save"]
+      .forEach(function(i){ el(i).hidden = false; });
     el("th-mode").hidden = thLayout !== "free";
     el("th-note-q").hidden = true; el("th-note-p").hidden = false;
     el("nodes").innerHTML = html;
@@ -1198,8 +1324,10 @@ window.WB_BUILD = '2026-09-28';
     var maxY = nodeBoxes.reduce(function(m,b){ return Math.max(m, b.y + b.h); }, 400);
     el("board").style.width = (maxX + 60) + "px";
     el("board").style.height = (maxY + 80) + "px";
+    applyZoom();
     measureNodes(); paintThreads(true);
     renderRelLegend();
+    if (showFaces) armFaces();
     if (inspId) markOpen(inspId);
   }
 
@@ -1334,6 +1462,83 @@ window.WB_BUILD = '2026-09-28';
     });
   });
 
+  /* ---------------- zoom ----------------
+     The board scales as a whole, so threads and cards keep their geometry.
+     What changes with scale is how much of a card is worth drawing: at a
+     distance a title is unreadable pixels, and a short tag held at constant
+     screen size is the only thing that still identifies the paper. */
+  var Z = 1, ZMIN = 0.12, ZMAX = 2.2;
+  var ZSTEP = [0.12,0.16,0.2,0.26,0.33,0.42,0.55,0.7,0.85,1,1.25,1.55,1.9,2.2];
+
+  /* Four tiers. The label is held at constant screen size as the board
+     shrinks, but only up to a point: past it the label would be wider than
+     the card it names and would collide with its neighbours, so below that
+     a card keeps only its reference number and gives the rest on hover. */
+  function lodFor(z){
+    return z >= 0.66 ? "full" : z >= 0.40 ? "mid" : z >= 0.24 ? "tag" : "dot";
+  }
+  function applyZoom(){
+    var bd = el("board");
+    bd.style.setProperty("--z", Z);
+    bd.setAttribute("data-lod", lodFor(Z));
+    var w = parseFloat(bd.style.width) || 0, h = parseFloat(bd.style.height) || 0;
+    var sz = el("zsize");
+    sz.style.width  = Math.round(w * Z) + "px";
+    sz.style.height = Math.round(h * Z) + "px";
+    el("z-pct").textContent = Math.round(Z * 100) + "%";
+  }
+  /* zoom about a point, so what is under the cursor stays under the cursor */
+  function setZoom(z, cx, cy){
+    var wrap = el("board-wrap"), old = Z;
+    Z = Math.max(ZMIN, Math.min(ZMAX, z));
+    if (Z === old) return;
+    var wr = wrap.getBoundingClientRect();
+    if (cx == null){ cx = wr.left + wrap.clientWidth/2; cy = wr.top + wrap.clientHeight/2; }
+    /* board coordinate under the cursor, before the change */
+    var bx = (wrap.scrollLeft + cx - wr.left) / old;
+    var by = (wrap.scrollTop  + cy - wr.top ) / old;
+    applyZoom();
+    wrap.scrollLeft = bx * Z - (cx - wr.left);
+    wrap.scrollTop  = by * Z - (cy - wr.top);
+  }
+  function zStep(dir, cx, cy){
+    var i = 0;
+    while (i < ZSTEP.length - 1 && ZSTEP[i] < Z - 1e-6) i++;
+    if (dir > 0 && ZSTEP[i] <= Z + 1e-6) i = Math.min(ZSTEP.length - 1, i + 1);
+    else if (dir < 0) i = Math.max(0, (ZSTEP[i] >= Z - 1e-6 ? i - 1 : i));
+    setZoom(ZSTEP[i], cx, cy);
+  }
+  function zFit(){
+    var wrap = el("board-wrap"), bd = el("board");
+    var w = parseFloat(bd.style.width) || 1, h = parseFloat(bd.style.height) || 1;
+    var z = Math.min((wrap.clientWidth - 16) / w, (wrap.clientHeight - 16) / h);
+    setZoom(Math.max(ZMIN, Math.min(1, z)));
+    wrap.scrollLeft = 0; wrap.scrollTop = 0;
+  }
+  el("z-in").addEventListener("click", function(){ zStep(1); });
+  el("z-out").addEventListener("click", function(){ zStep(-1); });
+  el("z-fit").addEventListener("click", zFit);
+  el("z-pct").addEventListener("click", function(){ setZoom(1); });
+  el("board-wrap").addEventListener("wheel", function(ev){
+    if (!ev.ctrlKey && !ev.metaKey) return;      /* plain wheel still scrolls */
+    ev.preventDefault();
+    setZoom(Z * (ev.deltaY < 0 ? 1.12 : 1/1.12), ev.clientX, ev.clientY);
+  }, {passive:false});
+  document.addEventListener("keydown", function(ev){
+    if (el("view-threads").hidden) return;
+    var t = ev.target.tagName;
+    if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT") return;
+    if (ev.key === "+" || ev.key === "=") { ev.preventDefault(); zStep(1); }
+    else if (ev.key === "-" || ev.key === "_") { ev.preventDefault(); zStep(-1); }
+    else if (ev.key === "0") { ev.preventDefault(); setZoom(1); }
+    else if (ev.key === "f") { ev.preventDefault(); zFit(); }
+  });
+  /* client coordinates -> board coordinates, which differ once scaled */
+  function boardPt(ev){
+    var r = el("board").getBoundingClientRect();
+    return {x: (ev.clientX - r.left) / Z, y: (ev.clientY - r.top) / Z};
+  }
+
   /* --- interaction --- */
   el("nodes").addEventListener("pointerover", function(ev){
     var n = ev.target.closest(".nd"); if (n) litFor(n.getAttribute("data-id"));
@@ -1410,8 +1615,8 @@ window.WB_BUILD = '2026-09-28';
       if (thWhich !== "papers" || thMode !== "move" || thLayout !== "free") return;
       var n = ev.target.closest(".nd"); if (!n) return;
       var b = boxOf(n.getAttribute("data-id")); if (!b) return;
-      var r = el("board").getBoundingClientRect();
-      drag = {n:n, b:b, dx: ev.clientX - r.left - b.x, dy: ev.clientY - r.top - b.y,
+      var p = boardPt(ev);
+      drag = {n:n, b:b, dx: p.x - b.x, dy: p.y - b.y,
               x0: ev.clientX, y0: ev.clientY, moved: false};
       n.setPointerCapture(ev.pointerId); ev.preventDefault();
     });
@@ -1420,9 +1625,9 @@ window.WB_BUILD = '2026-09-28';
       if (!drag.moved &&
           Math.abs(ev.clientX - drag.x0) < 4 && Math.abs(ev.clientY - drag.y0) < 4) return;
       drag.moved = true;
-      var r = el("board").getBoundingClientRect();
-      drag.b.x = Math.max(0, ev.clientX - r.left - drag.dx);
-      drag.b.y = Math.max(0, ev.clientY - r.top - drag.dy);
+      var p = boardPt(ev);
+      drag.b.x = Math.max(0, p.x - drag.dx);
+      drag.b.y = Math.max(0, p.y - drag.dy);
       drag.n.style.left = drag.b.x + "px"; drag.n.style.top = drag.b.y + "px";
       paintThreads();
     });

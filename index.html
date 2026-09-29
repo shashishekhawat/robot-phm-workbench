@@ -296,6 +296,7 @@
       <div class="chips" id="th-which" role="group" aria-label="Which board"></div>
       <div class="chips" id="th-src" role="group" aria-label="Source" hidden></div>
       <div class="chips" id="th-layout" role="group" aria-label="Layout" hidden></div>
+      <div class="chips" id="th-face" role="group" aria-label="Card faces" hidden></div>
       <div class="chips" id="th-mode" role="group" aria-label="Mode" hidden></div>
       <select id="th-rel" aria-label="Relation to draw" hidden></select>
       <button type="button" class="btn ghost" id="th-add" hidden>Add node</button>
@@ -336,10 +337,18 @@
       </div>
     </form>
 
-    <div class="board-wrap">
-      <div class="board" id="board">
-        <svg class="threads" id="threads"></svg>
-        <div class="nodes" id="nodes"></div>
+    <div class="board-wrap" id="board-wrap">
+      <div class="zsize" id="zsize">
+        <div class="board" id="board">
+          <svg class="threads" id="threads"></svg>
+          <div class="nodes" id="nodes"></div>
+        </div>
+      </div>
+      <div class="zoomer" role="group" aria-label="Zoom">
+        <button type="button" id="z-out" aria-label="Zoom out">&minus;</button>
+        <button type="button" id="z-pct" aria-label="Reset zoom to 100%">100%</button>
+        <button type="button" id="z-in" aria-label="Zoom in">+</button>
+        <button type="button" id="z-fit" aria-label="Fit board to view">fit</button>
       </div>
     </div>
 
