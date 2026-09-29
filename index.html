@@ -10,6 +10,7 @@
       <button class="tab" id="tab-today" role="tab" aria-selected="true" aria-controls="view-today">Today</button>
       <button class="tab" id="tab-log" role="tab" aria-selected="false" aria-controls="view-log">Log</button>
       <button class="tab" id="tab-q" role="tab" aria-selected="false" aria-controls="view-q">Questions</button>
+      <button class="tab" id="tab-facts" role="tab" aria-selected="false" aria-controls="view-facts">Facts</button>
       <button class="tab" id="tab-plan" role="tab" aria-selected="false" aria-controls="view-plan">Plan</button>
       <button class="tab" id="tab-threads" role="tab" aria-selected="false" aria-controls="view-threads">Threads</button>
       <button class="tab" id="tab-field" role="tab" aria-selected="false" aria-controls="view-field">Field</button>
@@ -202,6 +203,53 @@
       <h3>Why these are the progress bar</h3>
       <p>The list was fixed before the work started, which makes the denominator honest in a way self-set milestones never are. Closing one means writing the answer down, so the metric and the thesis material are the same act.</p>
       <p>Dropping a question is a legitimate outcome. A question that turns out to rest on a false premise should be dropped with a reason, not quietly left open.</p>
+    </div>
+  </section>
+
+  <!-- ================= FACTS ================= -->
+  <section id="view-facts" role="tabpanel" aria-labelledby="tab-facts" hidden>
+    <div class="panel-head">
+      <h2>Facts</h2>
+      <span class="tally" id="fc-tally">&mdash;</span>
+    </div>
+
+    <div class="filters">
+      <div class="chips" id="fc-status" role="group" aria-label="Status filter"></div>
+      <select id="fc-topic" aria-label="Topic filter"></select>
+    </div>
+
+    <details class="fc-add" id="fc-add">
+      <summary>Add a fact</summary>
+      <form id="f-fact" autocomplete="off">
+        <div class="field"><label for="fc-statement">The fact, in one sentence</label>
+          <textarea id="fc-statement" rows="2"></textarea></div>
+        <div class="fc-row">
+          <div class="field"><label for="fc-topic-in">Topic</label>
+            <input id="fc-topic-in" list="fc-topics" type="text"><datalist id="fc-topics"></datalist></div>
+          <div class="field"><label for="fc-source">Source (document, section)</label>
+            <input id="fc-source" type="text"></div>
+          <div class="field"><label for="fc-page">Page</label>
+            <input id="fc-page" type="text"></div>
+        </div>
+        <div class="field"><label for="fc-quote">Short quote (optional)</label>
+          <input id="fc-quote" type="text"></div>
+        <div class="field"><span class="legend">Status</span>
+          <div class="chips" id="fc-new-status" role="group" aria-label="Status of the new fact"></div></div>
+        <div class="actions">
+          <button type="submit" class="btn" id="fc-save">Save fact</button>
+          <span class="said" id="fc-said"></span>
+        </div>
+      </form>
+    </details>
+
+    <div id="fc-list">
+      <div class="msg">Loading facts&hellip;</div>
+    </div>
+
+    <div class="note">
+      <h3>What the status means</h3>
+      <p><b>Checked by you</b>: you read the page in the source yourself. <b>Read in source</b>: an assistant read the page and cites it, and you have not yet. <b>Second-hand</b>: it comes from a summary or report and nobody has read the original page. <b>Open</b>: not known yet. <b>Wrong</b>: checked and false, kept so it is not believed again.</p>
+      <p>A fact needs a source unless it is open. Use &ldquo;I checked this&rdquo; only after you have opened the page yourself.</p>
     </div>
   </section>
 

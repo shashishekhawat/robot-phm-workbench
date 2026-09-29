@@ -61,7 +61,7 @@ window.WB_BUILD = '2026-09-28';
 
   /* ---------- tabs ---------- */
   var TABS = [["today","tab-today","view-today"],["log","tab-log","view-log"],
-              ["q","tab-q","view-q"],["plan","tab-plan","view-plan"],["threads","tab-threads","view-threads"],["field","tab-field","view-field"],
+              ["q","tab-q","view-q"],["facts","tab-facts","view-facts"],["plan","tab-plan","view-plan"],["threads","tab-threads","view-threads"],["field","tab-field","view-field"],
               ["setup","tab-set","view-setup"]];
   function showTab(which){
     if (!TABS.some(function(t){ return t[0] === which; })) which = "today";
@@ -391,6 +391,189 @@ window.WB_BUILD = '2026-09-28';
       var s = el("q-said"); if (s) say(s, failText(e));
       btn.disabled = false;
     });
+  });
+
+
+  /* ---------- facts: what is known, from where, and who has checked ---------- */
+  var facts = [];
+  var fcFilter = {status: "all", topic: "all"}, fcOpenId = null;
+  var FC_STATUS = [
+    {value:"verified", label:"checked by you"},
+    {value:"read",     label:"read in source"},
+    {value:"reported", label:"second-hand"},
+    {value:"open",     label:"open"},
+    {value:"wrong",    label:"wrong"}
+  ];
+  function fcLabel(v){
+    for (var i = 0; i < FC_STATUS.length; i++) if (FC_STATUS[i].value === v) return FC_STATUS[i].label;
+    return v || "open";
+  }
+  chipGroup(el("fc-status"), [{value:"all", label:"all"}].concat(FC_STATUS), fcFilter.status);
+  wireChips(el("fc-status"));
+  el("fc-status").addEventListener("click", function(ev){
+    var b = ev.target.closest(".chip"); if (!b) return;
+    fcFilter.status = b.getAttribute("data-v"); renderFacts();
+  });
+  chipGroup(el("fc-new-status"), FC_STATUS.filter(function(x){ return x.value !== "wrong"; }), "read");
+  wireChips(el("fc-new-status"));
+  el("fc-topic").addEventListener("change", function(){ fcFilter.topic = el("fc-topic").value; renderFacts(); });
+
+  function fcTopics(){
+    var seen = [];
+    facts.forEach(function(f){ var t = f.topic || "Other"; if (seen.indexOf(t) < 0) seen.push(t); });
+    return seen;
+  }
+
+  function renderFacts(){
+    var topics = fcTopics();
+    var sel = el("fc-topic");
+    var want = ['<option value="all">All topics</option>'].concat(topics.map(function(t){
+      return '<option value="' + esc(t) + '">' + esc(t) + '</option>';
+    })).join("");
+    if (sel.innerHTML !== want){
+      sel.innerHTML = want;
+      if (topics.indexOf(fcFilter.topic) < 0) fcFilter.topic = "all";
+      sel.value = fcFilter.topic;
+    }
+    var dl = el("fc-topics"), dlWant = topics.map(function(t){ return '<option value="' + esc(t) + '">'; }).join("");
+    if (dl.innerHTML !== dlWant) dl.innerHTML = dlWant;
+
+    var cnt = {};
+    facts.forEach(function(f){ var k = f.status || "open"; cnt[k] = (cnt[k] || 0) + 1; });
+    el("fc-tally").textContent = facts.length
+      ? (cnt.verified || 0) + " checked by you \u00b7 " + (cnt.read || 0) + " read \u00b7 " +
+        (cnt.reported || 0) + " second-hand \u00b7 " + (cnt.open || 0) + " open"
+      : "none yet";
+
+    var host = el("fc-list");
+    if (!facts.length){
+      host.innerHTML = '<div class="msg">No facts recorded yet. Add the first one above, with its source and page.</div>';
+      return;
+    }
+    var rows = facts.filter(function(f){
+      if (fcFilter.topic !== "all" && (f.topic || "Other") !== fcFilter.topic) return false;
+      return fcFilter.status === "all" || (f.status || "open") === fcFilter.status;
+    });
+    if (!rows.length){
+      host.innerHTML = '<div class="msg">Nothing matches that filter.</div>';
+      return;
+    }
+    var order = [], by = {};
+    rows.slice().sort(function(a,b){ return (a.n||0) - (b.n||0); }).forEach(function(f){
+      var t = f.topic || "Other";
+      if (!by[t]){ by[t] = []; order.push(t); }
+      by[t].push(f);
+    });
+    host.innerHTML = order.map(function(t){
+      return '<h3 class="fc-topic">' + esc(t) + '</h3>' + by[t].map(fcCard).join("");
+    }).join("");
+  }
+
+  function fcCard(f){
+    var st = f.status || "open", open = f.id === fcOpenId;
+    var src = [];
+    if (f.source) src.push(esc(f.source));
+    if (f.page) src.push("p. " + esc(f.page));
+    if (f.checkedOn) src.push("checked " + esc(f.checkedOn) + (f.checkedBy ? " by " + esc(f.checkedBy) : ""));
+    var srcLine = src.length ? src.join(" \u00b7 ") : "no source recorded";
+    var links = (f.links || []).map(function(l){ return '<span class="fc-link">' + esc(l) + '</span>'; }).join("");
+    var body = "";
+    if (open){
+      body = '<div class="fc-open">' +
+        (f.note ? '<p class="fc-note">' + esc(f.note) + '</p>' : '') +
+        '<div class="field"><span class="legend">Status</span><div class="chips" id="fc-edit-status">' +
+          FC_STATUS.map(function(x){
+            return '<button type="button" class="chip" data-v="' + x.value + '" aria-pressed="' +
+                   (x.value === st ? "true" : "false") + '">' + esc(x.label) + '</button>';
+          }).join("") + '</div></div>' +
+        '<div class="field"><label for="fc-edit-note">Note</label>' +
+          '<textarea id="fc-edit-note" rows="2">' + esc(f.note || "") + '</textarea></div>' +
+        '<div class="actions">' +
+          (st === "verified" ? "" :
+            '<button type="button" class="btn" data-fact="check" data-id="' + esc(f.id) + '">I checked this in the source</button>') +
+          '<button type="button" class="btn ghost" data-fact="save" data-id="' + esc(f.id) + '">Save status and note</button>' +
+          '<span class="said" id="fc-edit-said"></span>' +
+        '</div></div>';
+    }
+    return '<article class="fc st-' + esc(st) + '">' +
+      '<button class="fc-head" type="button" data-fopen="' + esc(f.id) + '" aria-expanded="' + open + '">' +
+        '<span class="stripe"></span>' +
+        '<span class="fc-badge">' + esc(fcLabel(st)) + '</span>' +
+        '<span class="fc-t">' + esc(f.statement) + '</span>' +
+      '</button>' +
+      '<div class="fc-src">' + srcLine + '</div>' +
+      (f.quote ? '<p class="fc-quote">\u201c' + esc(f.quote) + '\u201d</p>' : '') +
+      (links ? '<div class="fc-links">' + links + '</div>' : '') +
+      body + '</article>';
+  }
+
+  el("fc-list").addEventListener("click", function(ev){
+    var head = ev.target.closest("[data-fopen]");
+    if (head){
+      var id = head.getAttribute("data-fopen");
+      fcOpenId = (fcOpenId === id) ? null : id;
+      renderFacts(); return;
+    }
+    var chip = ev.target.closest("#fc-edit-status .chip");
+    if (chip){
+      chip.parentNode.querySelectorAll(".chip").forEach(function(c){
+        c.setAttribute("aria-pressed", String(c === chip));
+      });
+      return;
+    }
+    var btn = ev.target.closest("[data-fact]");
+    if (!btn || !dbRef) return;
+    var act = btn.getAttribute("data-fact"), fid = btn.getAttribute("data-id");
+    var noteBox = el("fc-edit-note");
+    var note = noteBox ? noteBox.value.trim() : "";
+    var patch;
+    if (act === "check"){
+      patch = {status: "verified", checkedOn: todayISO(), checkedBy: "Shashi", note: note};
+    } else {
+      var picked = chipValue(el("fc-edit-status")) || "open";
+      patch = {status: picked, note: note};
+      if (picked === "verified") { patch.checkedOn = todayISO(); patch.checkedBy = "Shashi"; }
+    }
+    btn.disabled = true;
+    dbRef.collection("facts").doc(fid).update(patch).then(function(){
+      fcOpenId = null;
+    })["catch"](function(e){
+      var s = el("fc-edit-said"); if (s) say(s, failText(e));
+      btn.disabled = false;
+    });
+  });
+
+  el("f-fact").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    if (!dbRef) return;
+    var statement = el("fc-statement").value.trim();
+    var status = chipValue(el("fc-new-status")) || "open";
+    var source = el("fc-source").value.trim();
+    if (!statement){ say(el("fc-said"), "Write the fact first."); return; }
+    if (!source && status !== "open"){
+      say(el("fc-said"), "Give the source, or mark it open."); return;
+    }
+    var max = 0; facts.forEach(function(f){ if ((f.n || 0) > max) max = f.n; });
+    var btn = el("fc-save"); btn.disabled = true;
+    dbRef.collection("facts").add({
+      n: max + 1,
+      topic: el("fc-topic-in").value.trim() || "Other",
+      statement: statement,
+      status: status,
+      source: source,
+      page: el("fc-page").value.trim(),
+      quote: el("fc-quote").value.trim(),
+      checkedOn: status === "open" ? "" : todayISO(),
+      checkedBy: status === "verified" ? "Shashi" : "",
+      links: [],
+      note: ""
+    }).then(function(){
+      el("fc-statement").value = ""; el("fc-source").value = "";
+      el("fc-page").value = ""; el("fc-quote").value = "";
+      say(el("fc-said"), "Saved.");
+    })["catch"](function(e){
+      say(el("fc-said"), failText(e));
+    })["finally"](function(){ btn.disabled = false; });
   });
 
   /* ---------- rendering: field ---------- */
@@ -1721,6 +1904,7 @@ window.WB_BUILD = '2026-09-28';
     if (ready.q && ready.obj && ready.tk && ready.pp) renderBoard();
     if (ready.work && ready.exp) { renderCounts(); renderRecent(); }
     if (ready.q) { renderQuestions(); }
+    if (ready.fc) { renderFacts(); }
     if (ready.pp) { renderPapers(); }
     if (ready.dl) { renderDeadlines(); }
   }
@@ -1732,6 +1916,8 @@ window.WB_BUILD = '2026-09-28';
     el("recent").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("q-progress").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("q-list").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
+    el("fc-list").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
+    el("fc-tally").textContent = "\u2014";
     el("heat").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("heat-tally").textContent = "—";
     el("th-tally").textContent = "—";
@@ -1841,7 +2027,7 @@ window.WB_BUILD = '2026-09-28';
      machine is never silently clobbered.
      ========================================================== */
   var CFG = window.WB_CONFIG || {};
-  var FILES = ["objectives","questions","worklog","experiments","papers","opportunities","tasks","board","library"];
+  var FILES = ["objectives","questions","worklog","experiments","papers","opportunities","tasks","board","library","facts"];
   var files = {};        // name -> {rows, sha}
   var token = null;
 
@@ -1958,7 +2144,8 @@ window.WB_BUILD = '2026-09-28';
     tasks = (files.tasks.rows || []).slice().sort(function(a,b){ return (a.n||0)-(b.n||0); });
     board = files.board.rows || [];
     library = files.library.rows || [];
-    ready = {obj:true, work:true, exp:true, q:true, pp:true, dl:true, tk:true};
+    facts = files.facts ? (files.facts.rows || []) : [];
+    ready = {obj:true, work:true, exp:true, q:true, pp:true, dl:true, tk:true, fc:true};
   }
 
   /* ---------- token handling ---------- */
