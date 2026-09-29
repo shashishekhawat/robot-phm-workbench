@@ -707,7 +707,6 @@ window.WB_BUILD = '2026-09-28';
         p2 = {status: t.prevStatus || "next", doneOn: ""};
       } else {
         p2 = {status: "done", doneOn: todayISO(), prevStatus: was};
-        if (!t.startedOn) p2.startedOn = todayISO();
       }
       b.disabled = true;
       changeTask(t, p2, was === "done" ? "Reopened" : "Marked done", function(){ b.disabled = false; });
