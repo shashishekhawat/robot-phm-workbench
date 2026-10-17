@@ -11,6 +11,7 @@
       <button class="tab" id="tab-log" role="tab" aria-selected="false" aria-controls="view-log">Log</button>
       <button class="tab" id="tab-q" role="tab" aria-selected="false" aria-controls="view-q">Questions</button>
       <button class="tab" id="tab-facts" role="tab" aria-selected="false" aria-controls="view-facts">Facts</button>
+      <button class="tab" id="tab-inv" role="tab" aria-selected="false" aria-controls="view-inv">Inventory</button>
       <button class="tab" id="tab-plan" role="tab" aria-selected="false" aria-controls="view-plan">Plan</button>
       <button class="tab" id="tab-threads" role="tab" aria-selected="false" aria-controls="view-threads">Threads</button>
       <button class="tab" id="tab-field" role="tab" aria-selected="false" aria-controls="view-field">Field</button>
@@ -26,6 +27,15 @@
     <h1>PHM Workbench</h1>
     <p class="sub">Work log and experiment record for the GP12 diagnostics and prognostics thesis, measured against the four DC-1 objectives.</p>
   </header>
+
+  <form class="newpc" id="f-newpc" hidden autocomplete="off">
+    <p><b>This computer is new to the Workbench.</b> Give it a name so every change made from here says where it came from.</p>
+    <div class="newpc-row">
+      <input type="text" id="newpc-name" aria-label="Name for this computer" maxlength="60">
+      <button type="submit" class="btn">Save name</button>
+      <span class="said" id="newpc-said"></span>
+    </div>
+  </form>
 
   <!-- ================= TODAY ================= -->
   <section id="view-today" role="tabpanel" aria-labelledby="tab-today">
@@ -250,6 +260,54 @@
       <h3>What the status means</h3>
       <p><b>Checked by you</b>: you read the page in the source yourself. <b>Read in source</b>: an assistant read the page and cites it, and you have not yet. <b>Second-hand</b>: it comes from a summary or report and nobody has read the original page. <b>Open</b>: not known yet. <b>Wrong</b>: checked and false, kept so it is not believed again.</p>
       <p>A fact needs a source unless it is open. Use &ldquo;I checked this&rdquo; only after you have opened the page yourself.</p>
+    </div>
+  </section>
+
+  <!-- ================= INVENTORY ================= -->
+  <section id="view-inv" role="tabpanel" aria-labelledby="tab-inv" hidden>
+    <div class="panel-head">
+      <h2>Inventory</h2>
+      <span class="tally" id="iv-tally">&mdash;</span>
+    </div>
+
+    <div class="filters">
+      <div class="chips" id="iv-status" role="group" aria-label="Status filter"></div>
+      <select id="iv-kind" aria-label="Kind filter"></select>
+      <select id="iv-rel" aria-label="Relevance filter"></select>
+    </div>
+
+    <details class="fc-add">
+      <summary>Add an item</summary>
+      <form id="f-inv" autocomplete="off">
+        <div class="field"><label for="iv-new-name">What it is (model, version or name)</label>
+          <input id="iv-new-name" type="text"></div>
+        <div class="fc-row iv-row">
+          <div class="field"><label for="iv-new-kind">Kind</label><select id="iv-new-kind"></select></div>
+          <div class="field"><label for="iv-new-rel">Matters for</label><select id="iv-new-rel"></select></div>
+          <div class="field"><label for="iv-new-lead">Lead time if needed</label><input id="iv-new-lead" type="text" placeholder="e.g. 6 weeks"></div>
+        </div>
+        <div class="field"><span class="legend">Status</span>
+          <div class="chips" id="iv-new-status" role="group" aria-label="Status of the new item"></div></div>
+        <div class="fc-row iv-row">
+          <div class="field"><label for="iv-new-loc">Where it is</label><input id="iv-new-loc" type="text"></div>
+          <div class="field"><label for="iv-new-cust">Who has it</label><input id="iv-new-cust" type="text"></div>
+          <div class="field"><label for="iv-new-src">Source</label><input id="iv-new-src" type="text" placeholder="who told you, or a document"></div>
+        </div>
+        <div class="field"><label for="iv-new-use">What it is used for</label>
+          <input id="iv-new-use" type="text"></div>
+        <div class="actions">
+          <button type="submit" class="btn" id="iv-save">Save item</button>
+          <span class="said" id="iv-said"></span>
+        </div>
+      </form>
+    </details>
+
+    <div id="iv-list"><div class="msg">Loading inventory&hellip;</div></div>
+
+    <div class="note">
+      <h3>What this list is for</h3>
+      <p>Everything the work depends on, in one place: equipment, sensors, computers, software, data, accounts and documents, whether the lab has it, where it is and who holds it. Items marked <b>need</b> carry a lead time, because buying through the institute takes weeks to months and should start long before the experiment that needs it.</p>
+      <p>Record where something lives, not the thing itself. Project code and data stay on the lab systems.</p>
     </div>
   </section>
 
@@ -486,6 +544,8 @@
         <input type="password" id="gh-token" autocomplete="off" spellcheck="false"
                placeholder="github_pat_…">
       </div>
+      <label class="chk"><input type="checkbox" id="gh-remember" checked>
+        Remember the token on this computer (untick on a shared machine: you will paste it again next time)</label>
       <div class="actions">
         <button type="submit" class="btn" id="gh-save">Connect</button>
         <button type="button" class="btn ghost" id="gh-forget">Forget token</button>
@@ -496,9 +556,29 @@
       <h3>Where the token is kept, and what it can do</h3>
       <p>It is stored only in this browser, on this machine, and is sent only to api.github.com.
       It is never committed and never leaves for anywhere else. You will paste it once per browser.</p>
+      <p><b>Use one token per computer</b>, named after that computer (for example "workbench &middot; lab PC"),
+      with an expiry of about 90 days. Then losing or leaving a machine means revoking one token, not all of them.
+      On a computer where other people hold administrator rights, untick "remember" above.</p>
       <p>Scoped as above it can read and write files in that one private repository and nothing
       else — it cannot touch your other repositories or your account. If it ever leaks, revoke it
       on the same settings page and generate another; the worst case is someone editing this log.</p>
+    </div>
+
+    <div class="panel-head">
+      <h2>Computers</h2>
+      <span class="tally" id="dv-tally">&mdash;</span>
+    </div>
+    <form id="f-device" autocomplete="off">
+      <div class="field"><label for="dv-name">Name of this computer</label>
+        <input id="dv-name" type="text" maxlength="60"></div>
+      <div class="actions"><button type="submit" class="btn ghost">Save name</button>
+        <span class="said" id="dv-said"></span></div>
+    </form>
+    <div id="dv-list"></div>
+    <div class="note">
+      <h3>How computers are recognised</h3>
+      <p>Each browser on each computer gets its own id the first time it connects, and every entry it adds or changes is stamped with that id and named in the commit. Nothing has to be listed in advance. Clearing this site's data in a browser makes it count as a new computer; give it the old name again and the history still reads clearly.</p>
+      <p>Changes made by Claude Code show up under its own name (for example <code>claude-code &middot; lab PC</code>).</p>
     </div>
   </section>
 

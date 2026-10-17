@@ -59,9 +59,59 @@ window.WB_BUILD = '2026-09-28';
     catch(e){ return null; }
   }
 
+
+  /* ---------- computers: which machine made each change ----------
+     Each browser on each computer gets an id the first time it connects.
+     The id is registered in devices.json and stamped on every row it adds
+     (from, fromAt) or changes (updatedFrom, updatedAt), and named in the
+     commit message. No list of computers is set up in advance. */
+  var devices = [];
+  function guessDeviceName(){
+    var ua = navigator.userAgent || "", os = "Computer", br = "browser";
+    if (/Windows/.test(ua)) os = "Windows";
+    else if (/iPhone|iPad/.test(ua)) os = "iOS";
+    else if (/Android/.test(ua)) os = "Android";
+    else if (/CrOS/.test(ua)) os = "ChromeOS";
+    else if (/Mac OS X/.test(ua)) os = "Mac";
+    else if (/Linux/.test(ua)) os = "Linux";
+    if (/Edg\//.test(ua)) br = "Edge";
+    else if (/Firefox\//.test(ua)) br = "Firefox";
+    else if (/Chrome\//.test(ua)) br = "Chrome";
+    else if (/Safari\//.test(ua)) br = "Safari";
+    return os + " \u00b7 " + br;
+  }
+  function loadDevice(){
+    var d = null;
+    try { d = JSON.parse(store("wb.device") || "null"); } catch(e){ d = null; }
+    if (d && d.id) return d;
+    d = {id: "pc-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+         name: guessDeviceName(), named: false};
+    store("wb.device", JSON.stringify(d));
+    var back = null;
+    try { back = JSON.parse(store("wb.device") || "null"); } catch(e){}
+    if (!back || back.id !== d.id) d.ephemeral = true;   // storage blocked: do not register
+    return d;
+  }
+  var DEV = loadDevice();
+  function saveDevice(){ if (!DEV.ephemeral) store("wb.device", JSON.stringify(DEV)); }
+  function devName(id){
+    if (!id) return "";
+    if (id === DEV.id) return DEV.name;
+    for (var i = 0; i < devices.length; i++) if (devices[i].id === id) return devices[i].name || id;
+    return id;
+  }
+  function viaTag(r){
+    var id = r.updatedFrom || r.from;
+    if (!id) return "";
+    var when = String(r.updatedFrom ? (r.updatedAt || "") : (r.fromAt || "")).slice(0, 10);
+    var tip = (r.updatedFrom ? "last changed" : "added") + (when ? " " + when : "") +
+              (r.updatedFrom && r.from && r.from !== r.updatedFrom ? " \u00b7 added via " + devName(r.from) : "");
+    return '<span class="via" title="' + esc(tip) + '">via ' + esc(devName(id)) + '</span>';
+  }
+
   /* ---------- tabs ---------- */
   var TABS = [["today","tab-today","view-today"],["log","tab-log","view-log"],
-              ["q","tab-q","view-q"],["facts","tab-facts","view-facts"],["plan","tab-plan","view-plan"],["threads","tab-threads","view-threads"],["field","tab-field","view-field"],
+              ["q","tab-q","view-q"],["facts","tab-facts","view-facts"],["inv","tab-inv","view-inv"],["plan","tab-plan","view-plan"],["threads","tab-threads","view-threads"],["field","tab-field","view-field"],
               ["setup","tab-set","view-setup"]];
   function showTab(which){
     if (!TABS.some(function(t){ return t[0] === which; })) which = "today";
@@ -239,6 +289,7 @@ window.WB_BUILD = '2026-09-28';
               '<span class="k">log</span>' +
               '<span>' + esc(objLabel(r.objective)) + '</span>' +
               (r.hours ? '<span>' + esc(r.hours) + ' h</span>' : '') +
+              viaTag(r) +
             '</div>' +
             (r.blocker ? '<p class="row-note"><em>blocked</em>' + esc(r.blocker) + '</p>' : '') +
             (r.next ? '<p class="row-note"><em>next</em>' + esc(r.next) + '</p>' : '') +
@@ -254,6 +305,7 @@ window.WB_BUILD = '2026-09-28';
             '<span class="k">' + esc(r.verdict || "experiment") + '</span>' +
             '<span>' + esc(objLabel(r.objective)) + '</span>' +
             (r.dataPath ? '<span>' + esc(r.dataPath) + '</span>' : '') +
+            viaTag(r) +
           '</div>' +
           (r.result ? '<p class="row-note"><em>result</em>' + esc(r.result) + '</p>' : '') +
         '</div>' +
@@ -475,7 +527,7 @@ window.WB_BUILD = '2026-09-28';
     if (f.source) src.push(esc(f.source));
     if (f.page) src.push("p. " + esc(f.page));
     if (f.checkedOn) src.push("checked " + esc(f.checkedOn) + (f.checkedBy ? " by " + esc(f.checkedBy) : ""));
-    var srcLine = src.length ? src.join(" \u00b7 ") : "no source recorded";
+    var srcLine = (src.length ? src.join(" \u00b7 ") : "no source recorded") + (viaTag(f) ? " \u00b7 " + viaTag(f) : "");
     var links = (f.links || []).map(function(l){ return '<span class="fc-link">' + esc(l) + '</span>'; }).join("");
     var body = "";
     if (open){
@@ -573,6 +625,170 @@ window.WB_BUILD = '2026-09-28';
       say(el("fc-said"), "Saved.");
     })["catch"](function(e){
       say(el("fc-said"), failText(e));
+    })["finally"](function(){ btn.disabled = false; });
+  });
+
+
+  /* ---------- inventory: what the lab has, what is needed, and where it lives ---------- */
+  var inventory = [];
+  var ivFilter = {status: "all", kind: "all", rel: "all"}, ivOpenId = null;
+  var IV_STATUS = [
+    {value:"have",    label:"have"},
+    {value:"need",    label:"need"},
+    {value:"ordered", label:"ordered"},
+    {value:"unknown", label:"to locate"},
+    {value:"retired", label:"retired"}
+  ];
+  var IV_KIND = ["equipment","sensor","computer","software","data","account","document","other"];
+  var IV_REL = [
+    {value:"research", label:"my research"},
+    {value:"lab",      label:"lab / project"},
+    {value:"other",    label:"other"}
+  ];
+  function ivLabel(list, v){
+    for (var i = 0; i < list.length; i++) if (list[i].value === v) return list[i].label;
+    return v || "";
+  }
+  chipGroup(el("iv-status"), [{value:"all", label:"all"}].concat(IV_STATUS), ivFilter.status);
+  wireChips(el("iv-status"));
+  el("iv-status").addEventListener("click", function(ev){
+    var b = ev.target.closest(".chip"); if (!b) return;
+    ivFilter.status = b.getAttribute("data-v"); renderInventory();
+  });
+  el("iv-kind").innerHTML = '<option value="all">All kinds</option>' + IV_KIND.map(function(k){
+    return '<option value="' + k + '">' + k + '</option>'; }).join("");
+  el("iv-kind").addEventListener("change", function(){ ivFilter.kind = el("iv-kind").value; renderInventory(); });
+  el("iv-rel").innerHTML = '<option value="all">Everything</option>' + IV_REL.map(function(r){
+    return '<option value="' + r.value + '">' + r.label + '</option>'; }).join("");
+  el("iv-rel").addEventListener("change", function(){ ivFilter.rel = el("iv-rel").value; renderInventory(); });
+  el("iv-new-kind").innerHTML = IV_KIND.map(function(k){ return '<option value="' + k + '">' + k + '</option>'; }).join("");
+  el("iv-new-rel").innerHTML = IV_REL.map(function(r){ return '<option value="' + r.value + '">' + r.label + '</option>'; }).join("");
+  chipGroup(el("iv-new-status"), IV_STATUS.filter(function(x){ return x.value !== "retired"; }), "have");
+  wireChips(el("iv-new-status"));
+
+  function renderInventory(){
+    var cnt = {};
+    inventory.forEach(function(r){ var k = r.status || "unknown"; cnt[k] = (cnt[k] || 0) + 1; });
+    el("iv-tally").textContent = inventory.length
+      ? inventory.length + " items · " + (cnt.have || 0) + " have · " + (cnt.need || 0) + " need · " +
+        (cnt.ordered || 0) + " ordered · " + (cnt.unknown || 0) + " to locate"
+      : "none yet";
+    var host = el("iv-list");
+    if (!inventory.length){
+      host.innerHTML = '<div class="msg">Nothing recorded yet. Add the first item above.</div>';
+      return;
+    }
+    var rows = inventory.filter(function(r){
+      if (ivFilter.status !== "all" && (r.status || "unknown") !== ivFilter.status) return false;
+      if (ivFilter.kind !== "all" && (r.kind || "other") !== ivFilter.kind) return false;
+      if (ivFilter.rel !== "all" && (r.relevance || "other") !== ivFilter.rel) return false;
+      return true;
+    });
+    if (!rows.length){ host.innerHTML = '<div class="msg">Nothing matches that filter.</div>'; return; }
+    var by = {};
+    rows.slice().sort(function(a,b){ return (a.n||0) - (b.n||0); }).forEach(function(r){
+      var k = r.kind || "other"; (by[k] = by[k] || []).push(r);
+    });
+    host.innerHTML = IV_KIND.filter(function(k){ return by[k]; }).map(function(k){
+      return '<h3 class="fc-topic">' + esc(k) + ' · ' + by[k].length + '</h3>' + by[k].map(ivCard).join("");
+    }).join("");
+  }
+
+  function ivCard(r){
+    var st = r.status || "unknown", open = r.id === ivOpenId;
+    var meta = [];
+    if (r.location) meta.push(esc(r.location));
+    if (r.custodian) meta.push("with " + esc(r.custodian));
+    meta.push(esc(ivLabel(IV_REL, r.relevance || "other")));
+    if (r.leadTime) meta.push("lead time " + esc(r.leadTime));
+    if (r.source) meta.push("source: " + esc(r.source));
+    var via = viaTag(r); if (via) meta.push(via);
+    var body = "";
+    if (open){
+      body = '<div class="fc-open">' +
+        '<div class="field"><span class="legend">Status</span><div class="chips" id="iv-edit-status">' +
+          IV_STATUS.map(function(x){
+            return '<button type="button" class="chip" data-v="' + x.value + '" aria-pressed="' +
+                   (x.value === st ? "true" : "false") + '">' + esc(x.label) + '</button>';
+          }).join("") + '</div></div>' +
+        '<div class="fc-row iv-row">' +
+          '<div class="field"><label for="iv-edit-loc">Where it is</label><input id="iv-edit-loc" type="text" value="' + esc(r.location || "") + '"></div>' +
+          '<div class="field"><label for="iv-edit-cust">Who has it</label><input id="iv-edit-cust" type="text" value="' + esc(r.custodian || "") + '"></div>' +
+          '<div class="field"><label for="iv-edit-lead">Lead time</label><input id="iv-edit-lead" type="text" value="' + esc(r.leadTime || "") + '"></div>' +
+        '</div>' +
+        '<div class="field"><label for="iv-edit-notes">Notes</label><textarea id="iv-edit-notes" rows="3">' + esc(r.notes || "") + '</textarea></div>' +
+        '<div class="actions"><button type="button" class="btn" data-iv="save" data-id="' + esc(r.id) + '">Save</button>' +
+        '<span class="said" id="iv-edit-said"></span></div></div>';
+    }
+    return '<article class="fc iv st-' + esc(st) + '">' +
+      '<button class="fc-head" type="button" data-iopen="' + esc(r.id) + '" aria-expanded="' + open + '">' +
+        '<span class="stripe"></span>' +
+        '<span class="fc-badge">' + esc(ivLabel(IV_STATUS, st)) + '</span>' +
+        '<span class="fc-t">' + esc(r.name) + '</span>' +
+      '</button>' +
+      '<div class="fc-src">' + meta.join(" · ") + '</div>' +
+      (r.usedFor ? '<p class="fc-quote">' + esc(r.usedFor) + '</p>' : '') +
+      (!open && r.notes ? '<p class="fc-note iv-note">' + esc(r.notes) + '</p>' : '') +
+      body + '</article>';
+  }
+
+  el("iv-list").addEventListener("click", function(ev){
+    var head = ev.target.closest("[data-iopen]");
+    if (head){
+      var id = head.getAttribute("data-iopen");
+      ivOpenId = (ivOpenId === id) ? null : id;
+      renderInventory(); return;
+    }
+    var chip = ev.target.closest("#iv-edit-status .chip");
+    if (chip){
+      chip.parentNode.querySelectorAll(".chip").forEach(function(c){
+        c.setAttribute("aria-pressed", String(c === chip));
+      });
+      return;
+    }
+    var btn = ev.target.closest("[data-iv]");
+    if (!btn || !dbRef) return;
+    var rid = btn.getAttribute("data-id");
+    var patch = {
+      status: chipValue(el("iv-edit-status")) || "unknown",
+      location: el("iv-edit-loc").value.trim(),
+      custodian: el("iv-edit-cust").value.trim(),
+      leadTime: el("iv-edit-lead").value.trim(),
+      notes: el("iv-edit-notes").value.trim()
+    };
+    btn.disabled = true;
+    dbRef.collection("inventory").doc(rid).update(patch).then(function(){
+      ivOpenId = null;
+    })["catch"](function(e){
+      var s = el("iv-edit-said"); if (s) say(s, failText(e));
+      btn.disabled = false;
+    });
+  });
+
+  el("f-inv").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    if (!dbRef) return;
+    var name = el("iv-new-name").value.trim();
+    if (!name){ say(el("iv-said"), "Name the item first."); return; }
+    var max = 0; inventory.forEach(function(r){ if ((r.n || 0) > max) max = r.n; });
+    var btn = el("iv-save"); btn.disabled = true;
+    dbRef.collection("inventory").add({
+      n: max + 1,
+      name: name,
+      kind: el("iv-new-kind").value,
+      status: chipValue(el("iv-new-status")) || "unknown",
+      relevance: el("iv-new-rel").value,
+      location: el("iv-new-loc").value.trim(),
+      custodian: el("iv-new-cust").value.trim(),
+      usedFor: el("iv-new-use").value.trim(),
+      leadTime: el("iv-new-lead").value.trim(),
+      source: el("iv-new-src").value.trim(),
+      notes: ""
+    }).then(function(){
+      ["iv-new-name","iv-new-loc","iv-new-cust","iv-new-use","iv-new-lead","iv-new-src"].forEach(function(i){ el(i).value = ""; });
+      say(el("iv-said"), "Saved.");
+    })["catch"](function(e){
+      say(el("iv-said"), failText(e));
     })["finally"](function(){ btn.disabled = false; });
   });
 
@@ -815,6 +1031,7 @@ window.WB_BUILD = '2026-09-28';
           (t.week ? '<span>' + esc(t.week) + '</span>' : '') +
           (wait.length && st !== "done" ? '<span class="wait">waiting on ' + esc(wait.join(", ")) + '</span>' : '') +
           ((t.answers||[]).length ? '<span>closes ' + esc(t.answers.join(", ")) + '</span>' : '') +
+          viaTag(t) +
         '</div>' +
       '</div>' + edit +
     '</article>';
@@ -1905,6 +2122,8 @@ window.WB_BUILD = '2026-09-28';
     if (ready.work && ready.exp) { renderCounts(); renderRecent(); }
     if (ready.q) { renderQuestions(); }
     if (ready.fc) { renderFacts(); }
+    if (ready.inv) { renderInventory(); }
+    if (ready.dv) { renderDevices(); }
     if (ready.pp) { renderPapers(); }
     if (ready.dl) { renderDeadlines(); }
   }
@@ -1918,6 +2137,8 @@ window.WB_BUILD = '2026-09-28';
     el("q-list").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("fc-list").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("fc-tally").textContent = "\u2014";
+    el("iv-list").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
+    el("iv-tally").textContent = "\u2014";
     el("heat").innerHTML = '<div class="msg">' + esc(msg) + '</div>';
     el("heat-tally").textContent = "—";
     el("th-tally").textContent = "—";
@@ -2027,7 +2248,7 @@ window.WB_BUILD = '2026-09-28';
      machine is never silently clobbered.
      ========================================================== */
   var CFG = window.WB_CONFIG || {};
-  var FILES = ["objectives","questions","worklog","experiments","papers","opportunities","tasks","board","library","facts"];
+  var FILES = ["objectives","questions","worklog","experiments","papers","opportunities","tasks","board","library","facts","inventory","devices"];
   var files = {};        // name -> {rows, sha}
   var token = null;
 
@@ -2114,17 +2335,21 @@ window.WB_BUILD = '2026-09-28';
     collection: function(name){
       return {
         add: function(data){
-          var row = Object.assign({id: newId(name.slice(0,4))}, data);
+          var row = Object.assign({id: newId(name.slice(0,4))}, data,
+                                  {from: DEV.id, fromAt: new Date().toISOString()});
           return mutate(name, function(rows){ rows.push(row); },
-                        "log: add " + name.replace(/s$/,"") + " " + (data.date || ""));
+                        "log: add " + name.replace(/s$/,"") + " " + (data.date || "") +
+                        " \u00b7 from " + DEV.name);
         },
         doc: function(id){
           return {
             update: function(patch){
+              var stamped = Object.assign({}, patch,
+                                          {updatedFrom: DEV.id, updatedAt: new Date().toISOString()});
               return mutate(name, function(rows){
                 for (var i = 0; i < rows.length; i++)
-                  if (rows[i].id === id) { Object.assign(rows[i], patch); return; }
-              }, "log: update " + name.replace(/s$/,"") + " " + id);
+                  if (rows[i].id === id) { Object.assign(rows[i], stamped); return; }
+              }, "log: update " + name.replace(/s$/,"") + " " + id + " \u00b7 from " + DEV.name);
             }
           };
         }
@@ -2145,7 +2370,9 @@ window.WB_BUILD = '2026-09-28';
     board = files.board.rows || [];
     library = files.library.rows || [];
     facts = files.facts ? (files.facts.rows || []) : [];
-    ready = {obj:true, work:true, exp:true, q:true, pp:true, dl:true, tk:true, fc:true};
+    inventory = files.inventory ? (files.inventory.rows || []) : [];
+    devices = files.devices ? (files.devices.rows || []) : [];
+    ready = {obj:true, work:true, exp:true, q:true, pp:true, dl:true, tk:true, fc:true, inv:true, dv:true};
   }
 
   /* ---------- token handling ---------- */
@@ -2154,6 +2381,79 @@ window.WB_BUILD = '2026-09-28';
     if (n){ n.textContent = text; n.className = "said" + (ok === false ? " bad" : ""); }
   }
 
+  /* Register this browser the first time it connects, and on a rename.
+     Nothing is written on an ordinary visit. */
+  function registerDevice(){
+    if (DEV.ephemeral || !dbRef) return Promise.resolve();
+    var cur = null;
+    devices.forEach(function(d){ if (d.id === DEV.id) cur = d; });
+    if (cur && cur.name === DEV.name) return Promise.resolve();
+    var now = new Date().toISOString();
+    return mutate("devices", function(rows){
+      for (var i = 0; i < rows.length; i++) if (rows[i].id === DEV.id){
+        rows[i].name = DEV.name; rows[i].renamedAt = now; return;
+      }
+      rows.push({id: DEV.id, name: DEV.name, kind: "browser", agent: guessDeviceName(), firstSeen: now});
+    }, "device: " + (cur ? "rename to " : "add ") + DEV.name);
+  }
+
+  function deviceActivity(){
+    var act = {};
+    function bump(id, at){
+      if (!id) return;
+      var a = act[id] || (act[id] = {n: 0, last: ""});
+      a.n++; if (at && at > a.last) a.last = at;
+    }
+    Object.keys(files).forEach(function(k){
+      if (k === "devices") return;
+      (files[k].rows || []).forEach(function(r){
+        if (!r || typeof r !== "object") return;
+        bump(r.from, r.fromAt); bump(r.updatedFrom, r.updatedAt);
+      });
+    });
+    return act;
+  }
+
+  function renderDevices(){
+    var act = deviceActivity(), list = devices.slice();
+    Object.keys(act).forEach(function(id){
+      if (!list.some(function(d){ return d.id === id; })) list.push({id: id, name: id, kind: "unregistered"});
+    });
+    if (!DEV.ephemeral && !list.some(function(d){ return d.id === DEV.id; }))
+      list.unshift({id: DEV.id, name: DEV.name, kind: "browser"});
+    var nm = el("dv-name");
+    if (nm && document.activeElement !== nm) nm.value = DEV.name;
+    el("dv-tally").textContent = list.length + (list.length === 1 ? " computer" : " computers");
+    el("dv-list").innerHTML = list.map(function(d){
+      var a = act[d.id] || {n: 0, last: ""};
+      return '<div class="dv' + (d.id === DEV.id ? ' me' : '') + '">' +
+        '<b>' + esc(d.name || d.id) + '</b>' +
+        (d.id === DEV.id ? '<span class="dv-me">this computer</span>' : '') +
+        '<span>' + esc(d.kind || "browser") + '</span>' +
+        (d.agent ? '<span>' + esc(d.agent) + '</span>' : '') +
+        (d.firstSeen ? '<span>first ' + esc(String(d.firstSeen).slice(0, 10)) + '</span>' : '') +
+        '<span>' + a.n + ' change' + (a.n === 1 ? '' : 's') + (a.last ? ', last ' + esc(a.last.slice(0, 10)) : '') + '</span>' +
+        '<code>' + esc(d.id) + '</code></div>';
+    }).join("");
+    el("f-newpc").hidden = !dbRef || !!DEV.named || !!DEV.ephemeral;
+    var np = el("newpc-name");
+    if (np && document.activeElement !== np && !np.value) np.value = DEV.name;
+  }
+
+  function nameDevice(v, said){
+    v = String(v || "").trim();
+    if (!v){ say(said, "Give it a name."); return; }
+    DEV.name = v.slice(0, 60); DEV.named = true; saveDevice();
+    registerDevice().then(function(){ renderAll(); say(said, "Saved."); })
+      ["catch"](function(e){ say(said, failText(e)); });
+  }
+  el("f-device").addEventListener("submit", function(ev){
+    ev.preventDefault(); nameDevice(el("dv-name").value, el("dv-said"));
+  });
+  el("f-newpc").addEventListener("submit", function(ev){
+    ev.preventDefault(); nameDevice(el("newpc-name").value, el("newpc-said"));
+  });
+
   function loadAll(){
     setStatus("Loading…");
     return Promise.all(FILES.map(function(n){
@@ -2161,6 +2461,7 @@ window.WB_BUILD = '2026-09-28';
     })).then(function(){
       dbRef = gitStore;
       syncGlobals(); renderAll();
+      registerDevice()["catch"](function(){});
       el("view-setup").hidden = true;
       el("tab-set").hidden = false;
       el("s-repo").textContent = CFG.owner + "/" + CFG.repo;
@@ -2188,18 +2489,21 @@ window.WB_BUILD = '2026-09-28';
     if (!t) return;
     var btn = el("gh-save"); btn.disabled = true;
     connect(t).then(function(){
-      store("wb.token", t);
+      if (el("gh-remember").checked) store("wb.token", t);
+      else { try { sessionStorage.setItem("wb.token", t); } catch(e){} }
       el("gh-token").value = "";
     })["catch"](function(){})["finally"](function(){ btn.disabled = false; });
   });
 
   el("gh-forget").addEventListener("click", function(){
     try { localStorage.removeItem("wb.token"); } catch(e){}
+    try { sessionStorage.removeItem("wb.token"); } catch(e){}
     location.reload();
   });
 
   function boot(){
     var saved = store("wb.token");
+    if (!saved){ try { saved = sessionStorage.getItem("wb.token"); } catch(e){} }
     if (saved) { connect(saved)["catch"](function(){}); }
     else {
       el("view-setup").hidden = false;
