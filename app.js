@@ -792,6 +792,249 @@ window.WB_BUILD = '2026-09-28';
     })["finally"](function(){ btn.disabled = false; });
   });
 
+
+  /* ---------- history: every day's work, as a calendar and as a list ---------- */
+  var hxMode = store("wb.hxMode") === "list" ? "list" : "cal";
+  var calMonth = null, calPinned = null;
+  var cmpRange = "week", cmpDirty = false;
+  chipGroup(el("hx-mode"), [{value:"cal", label:"calendar"}, {value:"list", label:"list"}], hxMode);
+  wireChips(el("hx-mode"));
+  el("hx-mode").addEventListener("click", function(ev){
+    var b = ev.target.closest(".chip"); if (!b) return;
+    hxMode = b.getAttribute("data-v"); store("wb.hxMode", hxMode); renderHistory();
+  });
+  el("hx-search").addEventListener("input", function(){ renderHistory(); });
+
+  function isoOf(d){
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  function parseISO(s){ var t = new Date(String(s).slice(0,10) + "T00:00:00"); return isNaN(t) ? null : t; }
+  function dayLabel(iso, long){
+    var t = parseISO(iso); if (!t) return iso;
+    return t.toLocaleDateString(undefined, long
+      ? {weekday:"long", day:"numeric", month:"long", year:"numeric"}
+      : {weekday:"short", day:"numeric", month:"short", year:"numeric"});
+  }
+  function fmtHours(h){ return (Math.round(h * 10) / 10) + " h"; }
+
+  /* Everything that happened on each day: log entries, experiments, tasks finished. */
+  function dayIndex(){
+    var by = {};
+    function slot(iso){ return by[iso] || (by[iso] = {log:[], exp:[], done:[], hours:0}); }
+    worklog.forEach(function(r){
+      var iso = String(r.date || "").slice(0,10); if (!parseISO(iso)) return;
+      var d = slot(iso); d.log.push(r);
+      var h = parseFloat(r.hours); if (isFinite(h)) d.hours += h;
+    });
+    experiments.forEach(function(r){
+      var iso = String(r.date || "").slice(0,10); if (!parseISO(iso)) return;
+      slot(iso).exp.push(r);
+    });
+    tasks.forEach(function(t){
+      if (t.status === "done" && parseISO(t.doneOn || "")) slot(String(t.doneOn).slice(0,10)).done.push(t);
+    });
+    return by;
+  }
+  function dayText(d){
+    return d.log.map(function(r){ return [r.what, r.blocker, r.next].join(" "); })
+      .concat(d.exp.map(function(r){ return [r.hypothesis, r.result, r.setup].join(" "); }))
+      .concat(d.done.map(function(t){ return t.title; })).join(" ").toLowerCase();
+  }
+  function dayHTML(iso, d){
+    var items = d.log.map(function(r){
+      var meta = [];
+      if (r.hours) meta.push(esc(r.hours) + " h");
+      if (r.objective) meta.push(esc(objLabel(r.objective)));
+      if (viaTag(r)) meta.push(viaTag(r));
+      return '<div class="hx-it"><span class="hx-k">log</span><div>' +
+        '<p>' + esc(r.what) + '</p>' +
+        (r.blocker ? '<p class="hx-sub"><em>blocked</em> ' + esc(r.blocker) + '</p>' : '') +
+        (r.next ? '<p class="hx-sub"><em>next</em> ' + esc(r.next) + '</p>' : '') +
+        (meta.length ? '<div class="hx-meta">' + meta.join(" · ") + '</div>' : '') +
+      '</div></div>';
+    }).concat(d.exp.map(function(r){
+      return '<div class="hx-it"><span class="hx-k">' + esc(r.verdict || "experiment") + '</span><div>' +
+        '<p>' + esc(r.hypothesis) + '</p>' +
+        (r.result ? '<p class="hx-sub"><em>result</em> ' + esc(r.result) + '</p>' : '') +
+      '</div></div>';
+    })).concat(d.done.map(function(t){
+      return '<div class="hx-it"><span class="hx-k">done</span><div><p>' + esc(t.title) + '</p></div></div>';
+    }));
+    return '<div class="hx-day-h"><b>' + esc(dayLabel(iso, true)) + '</b>' +
+      (d.hours ? '<span>' + fmtHours(d.hours) + '</span>' : '') + '</div>' +
+      (items.length ? items.join("") : '<p class="hx-none">Nothing recorded on this day.</p>');
+  }
+
+  function renderHistory(){
+    var by = dayIndex(), days = Object.keys(by).sort();
+    var q = el("hx-search").value.trim().toLowerCase();
+    var hrs = days.reduce(function(a, k){ return a + by[k].hours; }, 0);
+    el("hx-tally").textContent = days.length
+      ? days.length + (days.length === 1 ? " day" : " days") + " recorded · " + fmtHours(hrs) + " logged"
+      : "nothing yet";
+    el("hx-cal").hidden = hxMode !== "cal";
+    el("hx-list").hidden = hxMode !== "list";
+    if (hxMode === "cal") renderCalendar(by, q); else renderHxList(by, days, q);
+    renderCompile(by);
+  }
+
+  function renderHxList(by, days, q){
+    var shown = days.slice().reverse().filter(function(k){ return !q || dayText(by[k]).indexOf(q) >= 0; });
+    el("hx-list").innerHTML = shown.length
+      ? shown.map(function(k){ return '<section class="hx-day">' + dayHTML(k, by[k]) + '</section>'; }).join("")
+      : '<div class="msg">' + (q ? "No day matches that search." : "Nothing logged yet.") + '</div>';
+  }
+
+  function renderCalendar(by, q){
+    var now = new Date();
+    if (!calMonth) calMonth = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0");
+    var y = +calMonth.slice(0,4), m = +calMonth.slice(5,7) - 1;
+    var first = new Date(y, m, 1);
+    el("cal-month").textContent = first.toLocaleDateString(undefined, {month:"long", year:"numeric"});
+    var start = new Date(y, m, 1 - ((first.getDay() + 6) % 7));        // the Monday on or before the 1st
+    var last = new Date(y, m + 1, 0);
+    var end = new Date(y, m + 1, 0 + (7 - ((last.getDay() + 6) % 7) - 1)); // the Sunday on or after the last day
+    var today = todayISO(), html = [];
+    ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].forEach(function(w){ html.push('<div class="cal-w">' + w + '</div>'); });
+    for (var d = new Date(start); d <= end; d.setDate(d.getDate() + 1)){
+      var iso = isoOf(d), e = by[iso], cls = ["cal-d"];
+      if (d.getMonth() !== m) cls.push("out");
+      if (iso === today) cls.push("today");
+      if (iso === calPinned) cls.push("pinned");
+      var mark = "";
+      if (e){
+        var n = e.log.length + e.exp.length + e.done.length;
+        var lvl = e.hours ? (e.hours >= 6 ? 4 : e.hours >= 4 ? 3 : e.hours >= 2 ? 2 : 1) : Math.min(n, 2);
+        cls.push("has", "l" + lvl);
+        if (q && dayText(e).indexOf(q) < 0) cls.push("dim");
+        mark = '<span class="cal-mk">' + (e.hours ? fmtHours(e.hours) : n + (n === 1 ? " item" : " items")) + '</span>';
+      }
+      html.push('<button type="button" class="' + cls.join(" ") + '" data-day="' + iso + '" aria-label="' +
+        esc(dayLabel(iso, true)) + (e ? ", work recorded" : "") + '"><span class="cal-n">' + d.getDate() + '</span>' + mark + '</button>');
+    }
+    el("cal-grid").innerHTML = html.join("");
+    if (calPinned) showDay(calPinned); else el("cal-pop").hidden = true;
+  }
+
+  function showDay(iso){
+    var cell = el("cal-grid").querySelector('[data-day="' + iso + '"]');
+    var pop = el("cal-pop"), wrap = el("cal-wrap");
+    if (!cell){ pop.hidden = true; return; }
+    var by = dayIndex();
+    pop.innerHTML = dayHTML(iso, by[iso] || {log:[], exp:[], done:[], hours:0}) +
+      (calPinned === iso ? '<button type="button" class="btn ghost cal-close" id="cal-close">Close</button>' : '');
+    pop.hidden = false;
+    var W = wrap.clientWidth, w = Math.min(380, W);
+    pop.style.width = w + "px";
+    var left = cell.offsetLeft + cell.offsetWidth + 8, top = cell.offsetTop;
+    if (left + w > W){
+      left = cell.offsetLeft - w - 8;
+      if (left < 0){ left = Math.max(0, Math.min(W - w, cell.offsetLeft)); top = cell.offsetTop + cell.offsetHeight + 6; }
+    }
+    pop.style.left = left + "px"; pop.style.top = top + "px";
+  }
+
+  el("cal-grid").addEventListener("mouseover", function(ev){
+    var c = ev.target.closest(".cal-d.has"); if (!c || calPinned) return;
+    showDay(c.getAttribute("data-day"));
+  });
+  el("cal-grid").addEventListener("focusin", function(ev){
+    var c = ev.target.closest(".cal-d"); if (!c || calPinned) return;
+    if (c.classList.contains("has")) showDay(c.getAttribute("data-day")); else el("cal-pop").hidden = true;
+  });
+  el("cal-wrap").addEventListener("mouseleave", function(){ if (!calPinned) el("cal-pop").hidden = true; });
+  el("cal-grid").addEventListener("click", function(ev){
+    var c = ev.target.closest(".cal-d"); if (!c) return;
+    var iso = c.getAttribute("data-day");
+    calPinned = (calPinned === iso) ? null : iso;
+    el("cal-grid").querySelectorAll(".cal-d.pinned").forEach(function(x){ x.classList.remove("pinned"); });
+    if (calPinned){ c.classList.add("pinned"); showDay(iso); } else el("cal-pop").hidden = true;
+  });
+  el("cal-pop").addEventListener("click", function(ev){
+    if (ev.target.id !== "cal-close") return;
+    calPinned = null; el("cal-pop").hidden = true;
+    el("cal-grid").querySelectorAll(".cal-d.pinned").forEach(function(x){ x.classList.remove("pinned"); });
+  });
+  function shiftMonth(k){
+    var y = +calMonth.slice(0,4), m = +calMonth.slice(5,7) - 1 + k;
+    var d = new Date(y, m, 1);
+    calMonth = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+    calPinned = null; renderHistory();
+  }
+  el("cal-prev").addEventListener("click", function(){ shiftMonth(-1); });
+  el("cal-next").addEventListener("click", function(){ shiftMonth(1); });
+  el("cal-today").addEventListener("click", function(){ calMonth = null; calPinned = null; renderHistory(); });
+
+  /* ---------- compile a worklog for the institute system ---------- */
+  chipGroup(el("cmp-range"), [
+    {value:"week", label:"this week"}, {value:"lastweek", label:"last week"},
+    {value:"month", label:"this month"}, {value:"custom", label:"custom"}
+  ], cmpRange);
+  wireChips(el("cmp-range"));
+  function setRange(r){
+    var t = midnight(new Date()), from, to;
+    var mon = new Date(t); mon.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+    if (r === "week"){ from = mon; to = new Date(mon); to.setDate(mon.getDate() + 6); }
+    else if (r === "lastweek"){ from = new Date(mon); from.setDate(mon.getDate() - 7); to = new Date(mon); to.setDate(mon.getDate() - 1); }
+    else if (r === "month"){ from = new Date(t.getFullYear(), t.getMonth(), 1); to = new Date(t.getFullYear(), t.getMonth() + 1, 0); }
+    if (from){ el("cmp-from").value = isoOf(from); el("cmp-to").value = isoOf(to); }
+  }
+  setRange(cmpRange);
+  el("cmp-range").addEventListener("click", function(ev){
+    var b = ev.target.closest(".chip"); if (!b) return;
+    cmpRange = b.getAttribute("data-v"); setRange(cmpRange); cmpDirty = false; renderCompile(dayIndex());
+  });
+  ["cmp-from","cmp-to"].forEach(function(id){
+    el(id).addEventListener("change", function(){
+      cmpRange = "custom";
+      el("cmp-range").querySelectorAll(".chip").forEach(function(c){ c.setAttribute("aria-pressed", String(c.getAttribute("data-v") === "custom")); });
+      cmpDirty = false; renderCompile(dayIndex());
+    });
+  });
+  el("cmp-out").addEventListener("input", function(){ cmpDirty = true; });
+
+  function sentence(s){ s = String(s || "").trim(); if (!s) return ""; return /[.!?]$/.test(s) ? s : s + "."; }
+  function compileText(by, from, to){
+    var days = Object.keys(by).filter(function(k){ return k >= from && k <= to; }).sort();
+    var out = ["Worklog: " + dayLabel(from) + " to " + dayLabel(to), ""], total = 0, lastNext = "";
+    days.forEach(function(k){
+      var d = by[k], lines = [];
+      d.log.forEach(function(r){
+        if (r.what) lines.push(sentence(r.what));
+        if (r.blocker) lines.push("Issue: " + sentence(r.blocker));
+        if (r.next) lastNext = r.next;
+      });
+      d.exp.forEach(function(r){
+        lines.push("Experiment: " + sentence(r.hypothesis) + (r.verdict ? " Outcome: " + r.verdict + "." : "") +
+                   (r.result ? " " + sentence(r.result) : ""));
+      });
+      d.done.forEach(function(t){ lines.push("Completed: " + sentence(t.title)); });
+      if (!lines.length) return;
+      total += d.hours;
+      out.push(dayLabel(k) + (d.hours ? " (" + fmtHours(d.hours) + ")" : ""));
+      out.push(lines.join(" "));
+      out.push("");
+    });
+    if (!days.length) out.push("No work recorded in this period.", "");
+    if (lastNext) out.push("Planned next: " + sentence(lastNext));
+    out.push("Days with recorded work: " + days.length + (total ? "; hours logged: " + (Math.round(total * 10) / 10) + "." : "."));
+    return out.join("\n");
+  }
+  function renderCompile(by){
+    if (cmpDirty) return;
+    var from = el("cmp-from").value, to = el("cmp-to").value;
+    if (!from || !to){ el("cmp-out").value = ""; return; }
+    if (from > to){ var x = from; from = to; to = x; }
+    el("cmp-out").value = compileText(by, from, to);
+  }
+  el("cmp-copy").addEventListener("click", function(){
+    var box = el("cmp-out"), txt = box.value;
+    function fallback(){ box.select(); try { document.execCommand("copy"); say(el("cmp-said"), "Copied."); } catch(e){ say(el("cmp-said"), "Select the text and press Ctrl+C."); } }
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(txt).then(function(){ say(el("cmp-said"), "Copied."); }, fallback);
+    else fallback();
+  });
+
   /* ---------- rendering: field ---------- */
   var TRIAGE = ["unread","reading","read","cited","irrelevant"];
   var INTENT = ["submitting","considering","ignore"];
@@ -2120,6 +2363,7 @@ window.WB_BUILD = '2026-09-28';
     if (ready.work && ready.exp && ready.q && ready.tk) renderHeat();
     if (ready.q && ready.obj && ready.tk && ready.pp) renderBoard();
     if (ready.work && ready.exp) { renderCounts(); renderRecent(); }
+    if (ready.work && ready.exp && ready.tk) { renderHistory(); }
     if (ready.q) { renderQuestions(); }
     if (ready.fc) { renderFacts(); }
     if (ready.inv) { renderInventory(); }

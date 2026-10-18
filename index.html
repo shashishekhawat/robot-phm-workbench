@@ -187,6 +187,52 @@
       </form>
     </details>
 
+    <!-- ---- history: every day's work ---- -->
+    <div class="panel-head">
+      <h2>History</h2>
+      <span class="tally" id="hx-tally">&mdash;</span>
+    </div>
+    <div class="filters">
+      <div class="chips" id="hx-mode" role="group" aria-label="History view"></div>
+      <input type="search" id="hx-search" placeholder="Search entries" aria-label="Search entries">
+    </div>
+
+    <div id="hx-cal" class="hx-cal">
+      <div class="cal-head">
+        <button type="button" class="btn ghost cal-nav" id="cal-prev" aria-label="Previous month">&lsaquo;</button>
+        <b id="cal-month">&mdash;</b>
+        <button type="button" class="btn ghost cal-nav" id="cal-next" aria-label="Next month">&rsaquo;</button>
+        <button type="button" class="btn ghost cal-nav" id="cal-today">This month</button>
+      </div>
+      <div class="cal-wrap" id="cal-wrap">
+        <div class="cal-grid" id="cal-grid"></div>
+        <div class="cal-pop" id="cal-pop" hidden></div>
+      </div>
+      <p class="cal-help">Hover over a day to see what you did. Click a day to keep it open.</p>
+    </div>
+
+    <div id="hx-list" class="hx-list" hidden></div>
+
+    <!-- ---- compile for the institute worklog ---- -->
+    <details class="fc-add" id="cmp-block">
+      <summary>Compile a worklog for the IITM system</summary>
+      <div class="cmp-body">
+        <div class="filters">
+          <div class="chips" id="cmp-range" role="group" aria-label="Range"></div>
+        </div>
+        <div class="two cmp-dates">
+          <div class="field"><label for="cmp-from">From</label><input type="date" id="cmp-from"></div>
+          <div class="field"><label for="cmp-to">To</label><input type="date" id="cmp-to"></div>
+        </div>
+        <div class="field"><label for="cmp-out">Worklog text <span class="hint">edit freely before pasting</span></label>
+          <textarea id="cmp-out" rows="12"></textarea></div>
+        <div class="actions">
+          <button type="button" class="btn" id="cmp-copy">Copy text</button>
+          <span class="said" id="cmp-said"></span>
+        </div>
+      </div>
+    </details>
+
     <div class="note">
       <h3>What does not belong here</h3>
       <p>Raw traces, plots and simulation output stay on disk and in git. Record the path and the conclusion; a dashboard that holds measurement files becomes a bad file manager.</p>
